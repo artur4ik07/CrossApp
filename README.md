@@ -22,5 +22,5 @@ dotnet run --project src/Cli
 
 \* \*\*linux-x64\*\*: \~76.00 MB (79 640 536 байт)\[cite: 1]
 
-## 
+## lab1 test
 
