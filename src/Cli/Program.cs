@@ -1,47 +1,39 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Encodings.Web;
+using System.Text.Json.Serialization;
+using Core;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-var appData = new
-{
-    Application = "CrossApp",
-    Student = "Подфедько Артур",
-    Group = "ФЕІ-37",
-    OSDescription = RuntimeInformation.OSDescription,
-    OSVersion = Environment.OSVersion.ToString(),
-    ProcessArchitecture = RuntimeInformation.ProcessArchitecture.ToString(),
-    DotNetVersion = Environment.Version.ToString(),
-    Runtime = RuntimeInformation.FrameworkDescription,
-    BaseDirectory = AppContext.BaseDirectory,
-    CurrentDirectory = Environment.CurrentDirectory,
-    Domain = "Замовлення (клієнт, товар, замовлення, рядок замовлення)"
-};
+EnvironmentReport report = EnvironmentInfo.Collect();
 
 if (args.Contains("--json"))
 {
-    var options = new JsonSerializerOptions 
-    { 
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping 
-    };
-    string jsonOutput = JsonSerializer.Serialize(appData, options);
-    Console.WriteLine(jsonOutput);
+    var context = new ReportJsonContext(new JsonSerializerOptions
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    });
+    Console.WriteLine(JsonSerializer.Serialize(report, context.EnvironmentReport));
+    return;
 }
-else
-{
-Console.WriteLine("Hi everyone");
+
 Console.WriteLine("CrossApp – практикум з крос-платформного програмування");
 Console.WriteLine("Студент: Подфедько Артур, група ФЕІ-37");
 Console.WriteLine(new string('-', 52));
-Console.WriteLine($"ОС (OSDescription)   : {RuntimeInformation.OSDescription}");
-Console.WriteLine($"ОС (Environment)     : {Environment.OSVersion}");
-Console.WriteLine($"Архітектура процесу  : {RuntimeInformation.ProcessArchitecture}");
-Console.WriteLine($"Версія .NET (CLR)    : {Environment.Version}");
-Console.WriteLine($"Runtime              : {RuntimeInformation.FrameworkDescription}");
-Console.WriteLine($"Каталог застосунку   : {AppContext.BaseDirectory}");
-Console.WriteLine($"Поточний каталог     : {Environment.CurrentDirectory}");
+Console.WriteLine($"ОС (OSDescription)  : {report.OsDescription}");
+Console.WriteLine($"ОС (Environment)    : {report.OsVersion}");
+Console.WriteLine($"Архітектура процесу : {report.ProcessArchitecture}");
+Console.WriteLine($"Версія .NET (CLR)   : {report.ClrVersion}");
+Console.WriteLine($"Runtime             : {report.FrameworkDescription}");
+Console.WriteLine($"RID (визначено)     : {report.DetectedRid}");
+Console.WriteLine($"RID (від .NET)      : {report.ReportedRid}");
+Console.WriteLine($"Збірка Core         : {report.BuildNote}");
+Console.WriteLine($"Каталог застосунку  : {report.BaseDirectory}");
+Console.WriteLine($"Поточний каталог    : {report.CurrentDirectory}");
 Console.WriteLine(new string('-', 52));
 Console.WriteLine("Предметна область: Замовлення (клієнт, товар, замовлення, рядок замовлення)");
+
+[JsonSerializable(typeof(EnvironmentReport))]
+internal partial class ReportJsonContext : JsonSerializerContext
+{
 }
