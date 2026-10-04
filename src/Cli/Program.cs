@@ -39,6 +39,39 @@ if (args.Length > 0 && args[0] == "--env")
     return 0;
 }
 
+if (args.Length > 0 && args[0] == "--mixed")
+{
+    string mixedPath = args.Length > 1 ? args[1] : Path.Combine("data", "mixed.csv");
+
+    if (!File.Exists(mixedPath))
+    {
+        Console.WriteLine($"Файл не знайдено: {Path.GetFullPath(mixedPath)}");
+        return 1;
+    }
+
+    MixedImportResult mixed = MixedImporter.Load(mixedPath);
+
+    Console.WriteLine($"Товарів: {mixed.Products.Count}");
+    foreach (ProductDto p in mixed.Products)
+        Console.WriteLine($"  P {p.Id,-6} {p.Name,-25} {p.Price,10:F2}");
+
+    Console.WriteLine($"Клієнтів: {mixed.Customers.Count}");
+    foreach (CustomerDto c in mixed.Customers)
+        Console.WriteLine($"  C {c.Id,-6} {c.Name,-25} {c.Email}");
+
+    if (mixed.Errors.Count > 0)
+    {
+        Console.WriteLine($"Пропущено рядків: {mixed.Errors.Count}");
+        foreach (string e in mixed.Errors)
+            Console.WriteLine($"  ! {e}");
+    }
+
+    int mixedTotal = mixed.Products.Count + mixed.Customers.Count + mixed.Errors.Count;
+    double mixedErrorRate = mixedTotal == 0 ? 0 : (double)mixed.Errors.Count / mixedTotal * 100;
+    Console.WriteLine($"Усього: {mixedTotal}, Прийнято: {mixed.Products.Count + mixed.Customers.Count}, Пропущено: {mixed.Errors.Count}, Помилок: {mixedErrorRate:F1}%");
+    return 0;
+}
+
 string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
 
 if (!File.Exists(path))
@@ -47,7 +80,21 @@ if (!File.Exists(path))
     return 1;
 }
 
-ImportResult<ProductDto> result = ProductCsvImporter.Load(path);
+ImportResult<ProductDto> result;
+try
+{
+    result = Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".csv" => ProductCsvImporter.Load(path),
+        ".json" => ProductJsonImporter.Load(path),
+        var ext => throw new NotSupportedException($"Непідтримуване розширення файлу: '{ext}' (очікую .csv або .json)")
+    };
+}
+catch (NotSupportedException ex)
+{
+    Console.WriteLine(ex.Message);
+    return 1;
+}
 
 Console.WriteLine($"Завантажено записів: {result.Items.Count}");
 foreach (ProductDto p in result.Items.Take(5))
@@ -60,6 +107,7 @@ if (result.Errors.Count > 0)
         Console.WriteLine($"  ! {e}");
 }
 
+Console.WriteLine(result.FormatStatistics());
 return 0;
 
 [JsonSerializable(typeof(EnvironmentReport))]
