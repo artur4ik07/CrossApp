@@ -5,7 +5,6 @@ namespace Core.Import;
 
 public static class ProductCsvImporter
 {
-    // Роздільник — крапка з комою: не конфліктує з крапкою в дробових цінах.
     private const char Separator = ';';
 
     public static ImportResult<ProductDto> Load(string path)
