@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Core;
 using Core.Dto;
+using Core.Domain;
 using Core.Import;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -72,6 +73,36 @@ if (args.Length > 0 && args[0] == "--mixed")
     return 0;
 }
 
+if (args.Length > 0 && args[0] == "--domain")
+{
+    Console.WriteLine("=== Сценарій 1: успіх ===");
+    Order order = Order.Create("ORD-001", "C-001");
+    Console.WriteLine(order);
+    order.AddLine("P-001", "Кобзар", 249.00m, 2);
+    order.AddLine("P-002", "Тіні забутих предків", 189.50m, 1);
+    Console.WriteLine(order);
+    order.Confirm();
+    Console.WriteLine(order);
+    Console.WriteLine();
+
+    Console.WriteLine("=== Мапінг ToDto / FromDto ===");
+    OrderDto dto = order.ToDto();
+    Order restored = Order.FromDto(dto);
+    Console.WriteLine($"Відновлено з DTO: {restored}");
+    Console.WriteLine();
+
+    Console.WriteLine("=== Сценарій 2: порушення інваріантів ===");
+    TryDo("додавання рядка до підтвердженого замовлення", () => order.AddLine("P-003", "Лісова пісня", 159.00m, 1));
+    TryDo("нульова кількість у рядку", () => Order.Create("ORD-002", "C-002").AddLine("P-001", "Кобзар", 249.00m, 0));
+    TryDo("від'ємна ціна", () => Order.Create("ORD-003", "C-003").AddLine("P-001", "Кобзар", -10m, 1));
+    TryDo("порожній customerId", () => Order.Create("ORD-004", "  "));
+    TryDo("підтвердження порожнього замовлення", () => Order.Create("ORD-005", "C-005").Confirm());
+
+    Console.WriteLine();
+    Console.WriteLine($"Стан замовлення ORD-001 після всіх відмов: {order}");
+    return 0;
+}
+
 string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
 
 if (!File.Exists(path))
@@ -109,6 +140,19 @@ if (result.Errors.Count > 0)
 
 Console.WriteLine(result.FormatStatistics());
 return 0;
+
+static void TryDo(string title, Action action)
+{
+    try
+    {
+        action();
+        Console.WriteLine($"  {title}: виняток НЕ спрацював — інваріант відсутній!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"  {title}: {ex.GetType().Name} — {ex.Message}");
+    }
+}
 
 [JsonSerializable(typeof(EnvironmentReport))]
 internal partial class ReportJsonContext : JsonSerializerContext
