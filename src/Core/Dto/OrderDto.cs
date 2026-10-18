@@ -3,5 +3,5 @@
 public sealed record OrderDto(
     string Id,
     string CustomerId,
-    bool IsConfirmed,
+    string Status,
     IReadOnlyList<OrderLineDto> Lines);

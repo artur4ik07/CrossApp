@@ -9,7 +9,8 @@ public sealed class Order
     public string Id { get; }
     public string CustomerId { get; }
     public IReadOnlyList<OrderLine> Lines => _lines.AsReadOnly();
-    public bool IsConfirmed { get; private set; }
+    public OrderStatus Status { get; private set; } = OrderStatus.Draft;
+    public bool IsConfirmed => Status == OrderStatus.Confirmed;
     public decimal Total => _lines.Sum(l => l.Price * l.Quantity);
 
     private Order(string id, string customerId)
@@ -18,7 +19,6 @@ public sealed class Order
         CustomerId = customerId;
     }
 
-    // Єдиний спосіб створити замовлення: усі перевірки тут.
     public static Order Create(string id, string customerId)
     {
         if (string.IsNullOrWhiteSpace(id))
@@ -31,8 +31,8 @@ public sealed class Order
 
     public void AddLine(string productId, string productName, decimal price, int quantity)
     {
-        if (IsConfirmed)
-            throw new InvalidOperationException($"Замовлення {Id} вже підтверджене, рядки додавати не можна");
+        if (Status != OrderStatus.Draft)
+            throw new InvalidOperationException($"Замовлення {Id} у стані {Status}, рядки можна додавати лише у стані Draft");
         if (string.IsNullOrWhiteSpace(productId))
             throw new ArgumentException("Ідентифікатор товару обов'язковий", nameof(productId));
         if (string.IsNullOrWhiteSpace(productName))
@@ -49,25 +49,54 @@ public sealed class Order
     {
         if (_lines.Count == 0)
             throw new InvalidOperationException($"Замовлення {Id} не можна підтвердити: немає жодного рядка");
-        if (IsConfirmed)
-            throw new InvalidOperationException($"Замовлення {Id} вже підтверджене");
 
-        IsConfirmed = true;
+        Status = TransitionTo(Status, "confirm");
     }
 
-    // Мапінг у формат зберігання і назад — знадобиться сховищу тижня 5.
-    public OrderDto ToDto() => new(Id, CustomerId, IsConfirmed, _lines.Select(l => l.ToDto()).ToList());
+    public void Cancel()
+    {
+        Status = TransitionTo(Status, "cancel");
+    }
+
+    // Явна таблиця допустимих переходів станів: switch expression з патерном кортежу
+    // (поточний стан, дія). Будь-яка комбінація, якої немає в таблиці, кидає виняток.
+    private OrderStatus TransitionTo(OrderStatus current, string action) => (current, action) switch
+    {
+        (OrderStatus.Draft, "confirm") => OrderStatus.Confirmed,
+        (OrderStatus.Draft, "cancel") => OrderStatus.Cancelled,
+        (OrderStatus.Confirmed, "cancel") => OrderStatus.Cancelled,
+        (OrderStatus.Confirmed, "confirm") => throw new InvalidOperationException($"Замовлення {Id} вже підтверджене"),
+        (OrderStatus.Cancelled, _) => throw new InvalidOperationException($"Замовлення {Id} скасоване, змінювати стан не можна"),
+        _ => throw new InvalidOperationException($"Перехід '{action}' зі стану {current} неможливий")
+    };
+
+    public OrderDto ToDto() => new(Id, CustomerId, Status.ToString(), _lines.Select(l => l.ToDto()).ToList());
 
     public static Order FromDto(OrderDto dto)
     {
         Order order = Create(dto.Id, dto.CustomerId);
         foreach (OrderLineDto line in dto.Lines)
             order.AddLine(line.ProductId, line.ProductName, line.Price, line.Quantity);
-        if (dto.IsConfirmed)
-            order.Confirm();
+
+        OrderStatus status = Enum.Parse<OrderStatus>(dto.Status);
+
+        switch (status)
+        {
+            case OrderStatus.Draft:
+                break;
+            case OrderStatus.Confirmed:
+                order.Confirm();
+                break;
+            case OrderStatus.Cancelled:
+                order.Cancel();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(dto), dto.Status, "Невідомий статус замовлення");
+        }
+
         return order;
     }
 
     public override string ToString() =>
-        $"{Id} (клієнт {CustomerId}) — рядків: {Lines.Count}, сума: {Total:F2}{(IsConfirmed ? " [підтверджено]" : "")}";
+        $"{Id} (клієнт {CustomerId}) — рядків: {Lines.Count}, сума: {Total:F2} [{Status}]";
 }

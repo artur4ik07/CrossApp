@@ -103,6 +103,62 @@ if (args.Length > 0 && args[0] == "--domain")
     return 0;
 }
 
+if (args.Length > 0 && args[0] == "--domain-advanced")
+{
+    Console.WriteLine("=== Завдання 1: ImportResult -> доменні сутності (зв'язок з тижнем 3) ===");
+    string productsPath = Path.Combine("data", "sample.csv");
+    ImportResult<ProductDto> importedProducts = ProductCsvImporter.Load(productsPath);
+
+    var productsForDemo = new List<ProductDto>(importedProducts.Items)
+    {
+        new ProductDto("P-999", "Товар з нульовою ціною", 0m)
+    };
+
+    ImportResult<OrderLine> lineResult = OrderLineFactory.FromProducts(productsForDemo);
+
+    Console.WriteLine($"З {productsForDemo.Count} товарів створено {lineResult.Items.Count} рядків замовлення");
+    foreach (OrderLine line in lineResult.Items.Take(3))
+        Console.WriteLine($"  {line.ProductId,-6} {line.ProductName,-30} {line.Price,10:F2}");
+    if (lineResult.Errors.Count > 0)
+    {
+        Console.WriteLine($"Відхилено доменними інваріантами: {lineResult.Errors.Count}");
+        foreach (string e in lineResult.Errors)
+            Console.WriteLine($"  ! {e}");
+    }
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 2: інваріант на двох сутностях (ліміт відкритих замовлень клієнта) ===");
+    var existingOrders = new List<Order>();
+    for (int i = 1; i <= OrderPlacementRules.MaxOpenOrdersPerCustomer; i++)
+    {
+        Order o = Order.Create($"ORD-C9-{i:000}", "C-009");
+        o.AddLine("P-001", "Кобзар", 249.00m, 1);
+        existingOrders.Add(o);
+    }
+    Console.WriteLine($"У клієнта C-009 вже {existingOrders.Count} непідтверджених замовлень");
+    TryDo("створення 6-го відкритого замовлення для того самого клієнта", () =>
+    {
+        OrderPlacementRules.EnsureCanPlaceNewOrder(existingOrders, "C-009");
+        Order sixth = Order.Create("ORD-C9-006", "C-009");
+        existingOrders.Add(sixth);
+    });
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 3: явні переходи станів OrderStatus ===");
+    Order so = Order.Create("ORD-900", "C-900");
+    so.AddLine("P-001", "Кобзар", 249.00m, 1);
+    Console.WriteLine($"Початковий стан: {so}");
+    so.Confirm();
+    Console.WriteLine($"Після Confirm(): {so}");
+    TryDo("повторне підтвердження вже підтвердженого замовлення", () => so.Confirm());
+    so.Cancel();
+    Console.WriteLine($"Після Cancel(): {so}");
+    TryDo("додавання рядка до скасованого замовлення", () => so.AddLine("P-002", "Тіні забутих предків", 100m, 1));
+    TryDo("підтвердження скасованого замовлення", () => so.Confirm());
+
+    return 0;
+}
+
 string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
 
 if (!File.Exists(path))
