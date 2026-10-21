@@ -8,6 +8,7 @@ using Core.Abstractions;
 using Core.Storage;
 using Core.Services;
 using Core.Events;
+using Core.Notifications;
 using Core.Import;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -284,6 +285,50 @@ if (args.Length > 0 && args[0] == "--events")
     Console.WriteLine($"Замовлень з менш як 2 рядками: {smallOrders.Count}");
     foreach (Order o in smallOrders.Take(5))
         Console.WriteLine($"  {o}");
+
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "--sink")
+{
+    string logPath = Path.Combine(AppContext.BaseDirectory, "logs", "sink.log");
+
+    INotificationSink sink = args.Contains("--file-sink")
+        ? new FileSink(logPath)
+        : new ConsoleSink();
+
+    var store = new InMemoryOrderStore(SampleData.Orders());
+    var service = new OrderService(store, sink);
+
+    Console.WriteLine($"Sink: {sink.GetType().Name}");
+    Console.WriteLine();
+
+    Order order = service.CreateOrder("C-850");
+    service.AddLine(order.Id, "P-001", "Кобзар", 249.00m, 1);
+    service.Confirm(order.Id);
+
+    if (sink is FileSink)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Записано у файл, а не в консоль. Вміст:");
+        Console.WriteLine(File.ReadAllText(logPath));
+    }
+
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "--import-report")
+{
+    string csvPath = Path.Combine("data", "sample.csv");
+
+    Console.WriteLine("=== Імпорт з негайним звітом через Action<string> ===");
+    ImportResult<ProductDto> importResult = ProductCsvImporter.Load(
+        csvPath,
+        line => Console.WriteLine($"  [SKIPPED] {line}"));
+
+    Console.WriteLine();
+    Console.WriteLine($"Завантажено: {importResult.Items.Count}, пропущено: {importResult.Errors.Count}");
+    Console.WriteLine("(Той самий перелік помилок доступний і після завершення — у importResult.Errors)");
 
     return 0;
 }

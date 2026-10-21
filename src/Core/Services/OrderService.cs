@@ -1,23 +1,28 @@
 ﻿using Core.Abstractions;
 using Core.Domain;
 using Core.Events;
+using Core.Notifications;
 
 namespace Core.Services;
 
-public sealed class OrderService(IOrderStore store)
+public sealed class OrderService(IOrderStore store, INotificationSink? sink = null)
 {
     private readonly IOrderStore _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly INotificationSink? _sink = sink;
 
     public event EventHandler<OrderChangedEventArgs>? Changed;
 
-    private void OnChanged(Order order, OrderChangeKind kind) =>
+    private void OnChanged(Order order, OrderChangeKind kind)
+    {
         Changed?.Invoke(this, new OrderChangedEventArgs(order.Id, kind, order.Lines.Count, order.Total));
+        _sink?.Notify($"{kind}: {order.Id}, рядків={order.Lines.Count}, сума={order.Total:F2}");
+    }
 
     public Order CreateOrder(string customerId)
     {
         var order = Order.Create(Guid.NewGuid().ToString("N")[..8], customerId);
-        _store.Add(order); // інваріанти вже перевірив Order.Create
-        OnChanged(order, OrderChangeKind.Created); // після зміни, не до
+        _store.Add(order);
+        OnChanged(order, OrderChangeKind.Created);
         return order;
     }
 
@@ -25,7 +30,7 @@ public sealed class OrderService(IOrderStore store)
     {
         var order = _store.GetById(orderId)
             ?? throw new InvalidOperationException($"Немає замовлення з id={orderId}.");
-        order.AddLine(productId, productName, price, quantity); // якщо тут виняток — події не буде
+        order.AddLine(productId, productName, price, quantity);
         _store.Update(order);
         OnChanged(order, OrderChangeKind.LineAdded);
     }
@@ -34,7 +39,7 @@ public sealed class OrderService(IOrderStore store)
     {
         var order = _store.GetById(orderId)
             ?? throw new InvalidOperationException($"Немає замовлення з id={orderId}.");
-        order.Confirm(); // якщо тут виняток — події не буде
+        order.Confirm();
         _store.Update(order);
         OnChanged(order, OrderChangeKind.Confirmed);
     }
@@ -42,7 +47,6 @@ public sealed class OrderService(IOrderStore store)
     public IReadOnlyList<Order> All() => _store.List();
     public Order? Find(string id) => _store.GetById(id);
 
-    // Func замість події — там, де потрібне значення у відповідь (крок 7 ЛР6, уже було в ЛР5)
     public IReadOnlyList<Order> Search(Func<Order, bool> predicate) =>
         _store.List().Where(predicate).ToList();
 }
