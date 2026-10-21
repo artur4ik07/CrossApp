@@ -7,6 +7,7 @@ using Core.Domain;
 using Core.Abstractions;
 using Core.Storage;
 using Core.Services;
+using Core.Events;
 using Core.Import;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -232,6 +233,57 @@ if (args.Length > 0 && args[0] == "--store-advanced")
     Console.WriteLine($"Фабрика створила: {factoryStore.GetType().Name}");
     var factoryService = new OrderService(factoryStore);
     Console.WriteLine($"Записів у сховищі: {factoryService.All().Count}");
+
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "--events")
+{
+    string logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
+    Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+
+    void OnOrderChanged(object? sender, OrderChangedEventArgs e)
+    {
+        var line = $"{e.At:HH:mm:ss} {e.Kind,-10} {e.OrderId} рядків={e.LinesCount,2} сума={e.Total,10:F2}";
+        Console.WriteLine(line);
+        File.AppendAllText(logPath, line + Environment.NewLine);
+    }
+
+    var store = new InMemoryOrderStore(SampleData.Orders());
+    var service = new OrderService(store);
+
+    service.Changed += OnOrderChanged;
+
+    int changes = 0;
+    service.Changed += (_, _) => changes++;
+
+    Console.WriteLine("=== Сценарій подій: створення, додавання рядка, підтвердження ===");
+    Order created = service.CreateOrder("C-800");
+    service.AddLine(created.Id, "P-001", "Кобзар", 249.00m, 2);
+    service.Confirm(created.Id);
+
+    Console.WriteLine();
+    Console.WriteLine($"Подій отримано: {changes}");
+
+    service.Changed -= OnOrderChanged;
+
+    Console.WriteLine();
+    Console.WriteLine("=== Після відписки OnOrderChanged (лямбда-лічильник лишається підписаною) ===");
+    Order second = service.CreateOrder("C-801"); // тиха для консолі й логу, але лічильник зросте
+    Console.WriteLine($"Подій отримано: {changes}");
+
+    Console.WriteLine();
+    Console.WriteLine("=== Сценарій відмови: подія НЕ виникає ===");
+    TryDo("AddLine з нульовою кількістю (порушення інваріанту)", () => service.AddLine(second.Id, "P-002", "Тіні забутих предків", 100m, 0));
+    TryDo("Confirm неіснуючого id", () => service.Confirm("UNKNOWN-ID"));
+    Console.WriteLine($"Подій отримано (без змін після відмов): {changes}");
+
+    Console.WriteLine();
+    Console.WriteLine("=== Пошук через Func<Order, bool> (service.Search) ===");
+    IReadOnlyList<Order> smallOrders = service.Search(o => o.Lines.Count < 2);
+    Console.WriteLine($"Замовлень з менш як 2 рядками: {smallOrders.Count}");
+    foreach (Order o in smallOrders.Take(5))
+        Console.WriteLine($"  {o}");
 
     return 0;
 }

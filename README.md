@@ -165,3 +165,27 @@ Composition root — src/Cli/Program.cs, блок --store: тут і лише т
    (наприклад, з тестів) без копіювання тернарного виразу.
 
 Запуск: dotnet run --project src/Cli -- --store-advanced [--file] [--cache]
+
+## Доменні події (ЛР6): OrderService.Changed
+
+Подія: event EventHandler<OrderChangedEventArgs>? Changed у src/Core/Services/OrderService.cs.
+Види змін (OrderChangeKind): Created, LineAdded, Confirmed — підіймаються лише
+після успішної зміни стану (OnChanged викликається останнім рядком методу,
+після _store.Update/_store.Add).
+
+Дані події (OrderChangedEventArgs): OrderId, Kind, LinesCount, Total, At.
+
+Підписники в Cli (--events):
+- іменований локальний метод OnOrderChanged — виводить рядок у консоль і дописує
+  у logs/app.log;
+- лямбда-лічильник (_, _) => changes++ — демонструє замикання над зовнішньою
+  змінною.
+
+Відписка service.Changed -= OnOrderChanged демонструється явно: після неї консоль
+і лог мовчать, але лямбда-лічильник і далі рахує події.
+
+Майбутні підписники: на тижні 10 — логер проєкту Api, на тижні 12 — компонент
+Blazor, що оновлюватиме таблицю замовлень. Жодних змін у Core для цього не
+знадобиться, бо сервіс лише піднімає подію, не знаючи, хто і як її обробляє.
+
+Запуск: dotnet run --project src/Cli -- --events
