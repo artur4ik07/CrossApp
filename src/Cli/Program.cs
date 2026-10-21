@@ -4,6 +4,9 @@ using System.Text.Json.Serialization;
 using Core;
 using Core.Dto;
 using Core.Domain;
+using Core.Abstractions;
+using Core.Storage;
+using Core.Services;
 using Core.Import;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -159,6 +162,79 @@ if (args.Length > 0 && args[0] == "--domain-advanced")
     return 0;
 }
 
+if (args.Length > 0 && args[0] == "--store")
+{
+    bool useFile = args.Contains("--file");
+    string dataPath = Path.Combine(AppContext.BaseDirectory, "data", "catalog.json");
+
+    IOrderStore store = useFile
+        ? new FileOrderStore(dataPath)
+        : new InMemoryOrderStore(SampleData.Orders());
+
+    var service = new OrderService(store);
+
+    Console.WriteLine($"Сховище: {store.GetType().Name}");
+
+    Order created = service.CreateOrder("C-900");
+    service.AddLine(created.Id, "P-001", "Кобзар", 249.00m, 2);
+    service.Confirm(created.Id);
+
+    Console.WriteLine();
+    Console.WriteLine("=== Усі замовлення у сховищі ===");
+    foreach (Order o in service.All())
+        Console.WriteLine($"  {o}");
+
+    Console.WriteLine();
+    Console.WriteLine("=== Сценарій відмови ===");
+    TryDo("додавання замовлення з id, що вже існує", () =>
+    {
+        Order dup = Order.Create(created.Id, "C-901");
+        store.Add(dup);
+    });
+    TryDo("AddLine для неіснуючого id замовлення", () => service.AddLine("UNKNOWN-ID", "P-001", "Кобзар", 100m, 1));
+
+    return 0;
+}
+
+
+if (args.Length > 0 && args[0] == "--store-advanced")
+{
+    Console.WriteLine("=== Завдання 1: декоратор CachingOrderStore ===");
+    IOrderStore baseStore = new InMemoryOrderStore(SampleData.Orders());
+    var cachingStore = new CachingOrderStore(baseStore);
+
+    IReadOnlyList<Order> firstCall = cachingStore.List();
+    Console.WriteLine($"Перший виклик List(): {firstCall.Count} замовлень (читання зі сховища)");
+
+    IReadOnlyList<Order> secondCall = cachingStore.List();
+    Console.WriteLine($"Другий виклик List(): {secondCall.Count} замовлень (з кешу, той самий об'єкт списку: {ReferenceEquals(firstCall, secondCall)})");
+
+    cachingStore.Add(Order.Create("ORD-CACHE-01", "C-777"));
+    IReadOnlyList<Order> afterAdd = cachingStore.List();
+    Console.WriteLine($"Після Add() кеш інвалідовано: {afterAdd.Count} замовлень (новий об'єкт списку: {!ReferenceEquals(firstCall, afterAdd)})");
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 2: пошук через Func<Order, bool> ===");
+    var service = new OrderService(cachingStore);
+    IReadOnlyList<Order> confirmedOnly = service.Search(o => o.IsConfirmed);
+    Console.WriteLine($"Підтверджених замовлень: {confirmedOnly.Count}");
+    foreach (Order o in confirmedOnly.Take(3))
+        Console.WriteLine($"  {o}");
+
+    IReadOnlyList<Order> byCustomer = service.Search(o => o.CustomerId == "C-001");
+    Console.WriteLine($"Замовлень клієнта C-001: {byCustomer.Count}");
+    foreach (Order o in byCustomer)
+        Console.WriteLine($"  {o}");
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 3: OrderStoreFactory.Create(args) ===");
+    IOrderStore factoryStore = OrderStoreFactory.Create(args);
+    Console.WriteLine($"Фабрика створила: {factoryStore.GetType().Name}");
+    var factoryService = new OrderService(factoryStore);
+    Console.WriteLine($"Записів у сховищі: {factoryService.All().Count}");
+
+    return 0;
+}
 string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
 
 if (!File.Exists(path))

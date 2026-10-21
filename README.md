@@ -125,3 +125,43 @@ dotnet publish src/Cli -c Release -r win-x64 --self-contained false -o publish/f
 Мапінг Order <-> OrderDto реалізовано через ToDto()/FromDto(); FromDto відновлює
 сутність через Create+AddLine+Confirm, тому проходить ті самі перевірки, що й
 при першому створенні.
+
+## Сервісний шар (ЛР5): IOrderStore + OrderService
+
+Інтерфейс src/Core/Abstractions/IOrderStore.cs: List(), GetById(id), Add(item),
+Update(item), Remove(id).
+
+Дві реалізації (src/Core/Storage/):
+- InMemoryOrderStore — Dictionary<string, Order> у пам'яті, дані зникають після
+  завершення процесу; заповнюється початковими даними з SampleData.Orders().
+- FileOrderStore — кеш у пам'яті + серіалізація у JSON (через OrderDto) у файл
+  data/catalog.json; дозавантаження при першому зверненні, запис на диск після
+  кожної зміни (Add/Update/Remove).
+
+Сервіс src/Core/Services/OrderService.cs залежить лише від IOrderStore (не від
+конкретної реалізації): CreateOrder(customerId), AddLine(orderId, ...),
+Confirm(orderId), All(), Find(id).
+
+Composition root — src/Cli/Program.cs, блок --store: тут і лише тут
+створюються конкретні класи (InMemoryOrderStore / FileOrderStore) залежно від
+прапорця --file.
+
+Запуск:
+    dotnet run --project src/Cli -- --store          # InMemoryOrderStore
+    dotnet run --project src/Cli -- --store --file    # FileOrderStore
+
+Схема залежностей: Cli -> OrderService -> IOrderStore -> InMemoryOrderStore | FileOrderStore
+
+## Додаткові завдання (ЛР5)
+
+1. **CachingOrderStore** (src/Core/Storage/CachingOrderStore.cs) — декоратор над
+   IOrderStore: кешує результат List(), скидає кеш при Add/Update/Remove.
+2. **OrderService.Search(Func<Order, bool>)** — пошук за довільним предикатом
+   без розширення самого інтерфейсу IOrderStore.
+3. **OrderStoreFactory.Create(args)** (src/Core/Storage/OrderStoreFactory.cs) —
+   винесена з Program.cs логіка вибору реалізації (--file, --cache). На
+   відміну від варіанта "усе в Program.cs" (блок --store), фабрика дозволяє
+   повторно використати ту саму логіку вибору сховища з кількох місць
+   (наприклад, з тестів) без копіювання тернарного виразу.
+
+Запуск: dotnet run --project src/Cli -- --store-advanced [--file] [--cache]
