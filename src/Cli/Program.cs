@@ -345,6 +345,11 @@ if (args.Length > 0 && args[0].StartsWith("report"))
             PrintOrders(ReportService.TopByTotal(items, 5));
             break;
 
+        case "report-ext":
+            Console.WriteLine("=== Власний метод-розширення TopBy (ТОП-3 за кількістю позицій) ===");
+            PrintOrders(ReportService.TopByLines(items, 3));
+            break;
+
         case "report-high":
             decimal threshold = 800.00m;
             Console.WriteLine($"=== Замовлення із сумою >= {threshold:F2} ===");
@@ -352,9 +357,39 @@ if (args.Length > 0 && args[0].StartsWith("report"))
             break;
 
         case "report-groups":
-            Console.WriteLine("=== Розподіл замовлень за статусами ===");
+            Console.WriteLine("=== Розподіл замовлень за статусами (Method Syntax) ===");
             foreach (var g in ReportService.ByStatus(items))
                 Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
+            break;
+
+        case "report-query":
+            Console.WriteLine("=== Розподіл за статусами (Query Syntax: from ... group ... into) ===");
+            foreach (var g in ReportService.ByStatusQuerySyntax(items))
+                Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
+            break;
+
+        case "report-join":
+            var sampleCustomers = new List<CustomerDto>
+            {
+                new("C-001", "Шевченко Тарас"),
+                new("C-002", "Франко Іван"),
+                new("C-003", "Леся Українка"),
+                new("C-004", "Коцюбинський Михайло"),
+                new("C-005", "Багряний Іван"),
+                new("C-999", "Порожній Клієнт Без Замовлень")
+            };
+            Console.WriteLine("=== GroupJoin: Клієнти x Замовлення ===");
+            var joinResult = ReportService.CustomerOrdersReport(sampleCustomers, items);
+            foreach (var c in joinResult)
+                Console.WriteLine($"  Клієнт: {c.CustomerId,-6} {c.CustomerName,-30} Замовлень: {c.OrdersCount,2}  Загалом: {c.TotalAmount,10:F2}");
+            break;
+
+        case "report-bench":
+            Console.WriteLine("=== Замір часу Stopwatch на 100 000 згенерованих записах ===");
+            var bench = ReportService.RunBenchmark(100_000);
+            Console.WriteLine($"  1) З ToList() всередині ланцюжка : {bench.MsWithToList} ms");
+            Console.WriteLine($"  2) БЕЗ ToList() всередині (чистий LINQ) : {bench.MsWithoutToList} ms");
+            Console.WriteLine($"  Різниця: {bench.MsWithToList - bench.MsWithoutToList} ms (проміжна матеріалізація вимагає зайвого виділення пам'яті)");
             break;
 
         case "report-sum":
@@ -385,7 +420,7 @@ if (args.Length > 0 && args[0].StartsWith("report"))
             break;
 
         default:
-            Console.WriteLine("Доступні команди: report-top | report-high | report-groups | report-sum | report-deferred");
+            Console.WriteLine("Доступні команди: report-top | report-ext | report-high | report-groups | report-query | report-join | report-bench | report-sum | report-deferred");
             break;
     }
 

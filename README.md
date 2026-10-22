@@ -217,3 +217,41 @@ Blazor, що оновлюватиме таблицю замовлень. Жод�
    ImportResult.Errors після завершення циклу.
 
    Запуск: dotnet run --project src/Cli -- --import-report
+
+## LINQ-звіти (ЛР7)
+
+Звіти реалізовані в src/Core/Reports/ReportService.cs, приймають IEnumerable<Order>
+і повертають IReadOnlyList<DTO> (OrderReportLine, StatusGroupSummary,
+CustomerOrdersSummary) — внутрішня доменна модель не витікає назовні.
+
+Підкоманди Cli (dotnet run --project src/Cli -- report-...):
+- report-top      — топ-5 замовлень за сумою (TopBy extension-метод)
+- report-ext      — топ-3 замовлень за кількістю позицій (той самий TopBy)
+- report-high     — замовлення із сумою >= порогу (Where + сортування + проєкція)
+- report-groups   — розподіл за статусами (GroupBy, method syntax)
+- report-query    — те саме через query syntax (from ... group ... into ...)
+- report-join     — GroupJoin клієнтів і замовлень (клієнт лишається в звіті
+                     навіть без жодного замовлення — на відміну від Join)
+- report-sum      — агрегати: кількість, сума, середній чек, максимальний чек
+- report-bench    — Stopwatch-порівняння LINQ з ToList() у середині ланцюжка
+                     і без нього на 100 000 згенерованих записах
+- report-deferred — демонстрація відкладеного виконання
+
+### Відкладене виконання: пояснення чисел
+
+dotnet run --project src/Cli -- report-deferred дає послідовність
+10 -> 11 -> 11:
+
+1. var query = source.Where(...) лише будує опис запиту, нічого не виконує.
+2. Перший query.Count() запускає перебір джерела (10 елементів відповідають
+   умові на той момент).
+3. Після source.Add(extra) джерело має на один елемент більше. Другий виклик
+   query.Count() знову перебирає джерело (бо Where не кешує результат) і
+   бачить уже 11 елементів, що відповідають умові, — звідси різниця 10 -> 11.
+4. var snapshot = query.ToList() матеріалізує результат один раз. Подальший
+   source.Clear() більше не впливає на snapshot, бо Count властивості
+   List<T> не перераховує джерело — звідси 11 без змін.
+
+Висновок: Where/Select самі по собі не містять результату, лише опис
+запиту; результат з'являється тільки під час foreach або виклику
+завершального оператора (Count(), ToList(), Sum() тощо).
