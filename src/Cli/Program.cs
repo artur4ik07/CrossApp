@@ -1,4 +1,5 @@
-﻿using System.Text.Encodings.Web;
+﻿using Core.Reports;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Core;
@@ -332,6 +333,71 @@ if (args.Length > 0 && args[0] == "--import-report")
 
     return 0;
 }
+if (args.Length > 0 && args[0].StartsWith("report"))
+{
+    IOrderStore store = OrderStoreFactory.Create(args);
+    var items = store.List();
+
+    switch (args[0])
+    {
+        case "report-top":
+            Console.WriteLine("=== ТОП-5 замовлень за сумою ===");
+            PrintOrders(ReportService.TopByTotal(items, 5));
+            break;
+
+        case "report-high":
+            decimal threshold = 800.00m;
+            Console.WriteLine($"=== Замовлення із сумою >= {threshold:F2} ===");
+            PrintOrders(ReportService.HighValueOrders(items, threshold));
+            break;
+
+        case "report-groups":
+            Console.WriteLine("=== Розподіл замовлень за статусами ===");
+            foreach (var g in ReportService.ByStatus(items))
+                Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
+            break;
+
+        case "report-sum":
+            var t = ReportService.Totals(items);
+            Console.WriteLine("=== Підсумкова статистика замовлень ===");
+            Console.WriteLine($"  Всього замовлень : {t.Count}");
+            Console.WriteLine($"  Загальна сума    : {t.Total:F2}");
+            Console.WriteLine($"  Середній чек     : {t.Average:F2}");
+            Console.WriteLine($"  Максимальний чек : {t.Max:F2}");
+            break;
+
+        case "report-deferred":
+            Console.WriteLine("=== Демонстрація відкладеного виконання LINQ ===");
+            var source = store.List().ToList();
+            var query = source.Where(o => o.Total > 500m);
+
+            Console.WriteLine($"Кількість дорожчих за 500m ДО змін: {query.Count()}");
+
+            Order extra = Order.Create("ORD-TMP-99", "C-999");
+            extra.AddLine("P-999", "Тестова дорога книга", 1000m, 1);
+            source.Add(extra);
+
+            Console.WriteLine($"Кількість дорожчих за 500m ПІСЛЯ додавання у джерело: {query.Count()}");
+
+            var snapshot = query.ToList();
+            source.Clear();
+            Console.WriteLine($"У матеріалізованому snapshot після Clear(): {snapshot.Count}");
+            break;
+
+        default:
+            Console.WriteLine("Доступні команди: report-top | report-high | report-groups | report-sum | report-deferred");
+            break;
+    }
+
+    return 0;
+}
+
+static void PrintOrders(IReadOnlyList<OrderReportLine> lines)
+{
+    foreach (var l in lines)
+        Console.WriteLine($"  {l.OrderId,-10} Клієнт: {l.CustomerId,-6} Рядків: {l.LinesCount,2} Сума: {l.Total,10:F2} [{l.Status}]");
+}
+
 string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
 
 if (!File.Exists(path))
