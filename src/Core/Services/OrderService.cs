@@ -44,6 +44,25 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
         OnChanged(order, OrderChangeKind.Confirmed);
     }
 
+    public void Cancel(string orderId)
+    {
+        var order = _store.GetById(orderId)
+            ?? throw new InvalidOperationException($"Немає замовлення з id={orderId}.");
+        order.Cancel();
+        _store.Update(order);
+        OnChanged(order, OrderChangeKind.Cancelled);
+    }
+
+    public bool Remove(string orderId)
+    {
+        var order = _store.GetById(orderId);
+        if (order is null)
+            return false;
+        _store.Remove(orderId);
+        OnChanged(order, OrderChangeKind.Removed);
+        return true;
+    }
+
     public IReadOnlyList<Order> All() => _store.List();
     public Order? Find(string id) => _store.GetById(id);
 

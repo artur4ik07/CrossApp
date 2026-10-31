@@ -1,4 +1,5 @@
-﻿using Core.Reports;
+﻿using System.Globalization;
+using Core.Reports;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -433,6 +434,101 @@ static void PrintOrders(IReadOnlyList<OrderReportLine> lines)
         Console.WriteLine($"  {l.OrderId,-10} Клієнт: {l.CustomerId,-6} Рядків: {l.LinesCount,2} Сума: {l.Total,10:F2} [{l.Status}]");
 }
 
+if (args.Length > 1 && args[0] == "--crud")
+{
+    IOrderStore store = OrderStoreFactory.Create(args);
+
+    var service = new OrderService(store);
+    string action = args[1];
+
+    switch (action)
+    {
+        case "list":
+            Console.WriteLine($"Сховище: {store.GetType().Name}");
+            Console.WriteLine($"Усього замовлень: {store.List().Count}");
+            foreach (Order o in store.List())
+                Console.WriteLine($"  {o}");
+            break;
+
+        case "get":
+            string getId = args.Length > 2 ? args[2] : "";
+            Order? found = store.GetById(getId);
+            Console.WriteLine(found is null
+                ? $"Замовлення з id={getId} не знайдено."
+                : $"Знайдено: {found}");
+            break;
+
+        case "add":
+            string customerId = args.Length > 2 ? args[2] : "C-DEMO";
+            Order created = service.CreateOrder(customerId);
+            Console.WriteLine($"Створено: {created}");
+            break;
+
+        case "update":
+            if (args.Length < 7)
+            {
+                Console.WriteLine("Використання: --crud update <orderId> <productId> <name> <price> <qty> [--file]");
+                break;
+            }
+            string updId = args[2];
+            string prodId = args[3];
+            string prodName = args[4];
+            decimal price = decimal.Parse(args[5], CultureInfo.InvariantCulture);
+            int qty = int.Parse(args[6]);
+            service.AddLine(updId, prodId, prodName, price, qty);
+            Console.WriteLine($"Оновлено: {store.GetById(updId)}");
+            break;
+
+        case "search":
+            if (args.Length < 3)
+            {
+                Console.WriteLine("Використання: --crud search <confirmed|draft|cancelled|customer|min-total|max-total|min-lines> [значення] [--file]");
+                break;
+            }
+            string filterType = args[2].ToLowerInvariant();
+            string? filterValue = args.Length > 3 && !args[3].StartsWith("--") ? args[3] : null;
+
+            Func<Order, bool>? predicate = filterType switch
+            {
+                "confirmed" => o => o.Status == OrderStatus.Confirmed,
+                "draft" => o => o.Status == OrderStatus.Draft,
+                "cancelled" => o => o.Status == OrderStatus.Cancelled,
+                "customer" when filterValue is not null => o => o.CustomerId == filterValue,
+                "min-total" when filterValue is not null && decimal.TryParse(filterValue, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal minT) => o => o.Total >= minT,
+                "max-total" when filterValue is not null && decimal.TryParse(filterValue, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal maxT) => o => o.Total <= maxT,
+                "min-lines" when filterValue is not null && int.TryParse(filterValue, out int minL) => o => o.Lines.Count >= minL,
+                _ => null
+            };
+
+            if (predicate is null)
+            {
+                Console.WriteLine($"Невідомий або некоректний критерій: '{filterType}' зі значенням '{filterValue}'.");
+                break;
+            }
+
+            IReadOnlyList<Order> foundOrders = service.Search(predicate);
+            Console.WriteLine($"Критерій: {filterType}{(filterValue is null ? "" : " " + filterValue)}");
+            Console.WriteLine($"Знайдено: {foundOrders.Count}");
+            foreach (Order o in foundOrders)
+                Console.WriteLine($"  {o}");
+            break;
+        case "remove":
+            string remId = args.Length > 2 ? args[2] : "";
+            bool removed = store.Remove(remId);
+            Console.WriteLine(removed
+                ? $"Видалено замовлення {remId}."
+                : $"Замовлення {remId} не знайдено, видаляти нічого.");
+            break;
+
+        default:
+            Console.WriteLine("Дії: list | get <id> | add <customerId> | update <id> <productId> <name> <price> <qty> | remove <id> | search <критерій> [значення]");
+            break;
+    }
+
+    return 0;
+}
+if (args.Length > 0 && args[0] == "--shell")
+    return Shell.Run(args);
 string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
 
 if (!File.Exists(path))

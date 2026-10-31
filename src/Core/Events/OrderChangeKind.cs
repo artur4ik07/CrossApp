@@ -4,5 +4,7 @@ public enum OrderChangeKind
 {
     Created,
     LineAdded,
-    Confirmed
+    Confirmed,
+    Cancelled,
+    Removed
 }
