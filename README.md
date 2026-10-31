@@ -255,3 +255,10 @@ dotnet run --project src/Cli -- report-deferred дає послідовніст�
 Висновок: Where/Select самі по собі не містять результату, лише опис
 запиту; результат з'являється тільки під час foreach або виклику
 завершального оператора (Count(), ToList(), Sum() тощо).
+
+### Звіти ЛР7 у shell
+
+Команди: customer, report top|ext|high|groups|query|sum|join|deferred|bench.
+Звіти рахуються над реальним вмістом сховища (service.All()), а не над SampleData:
+замовлення, створені або видалені в сеансі, одразу видно у звітах.
+report deferred показує відкладене виконання: Count() до і після зміни джерела та знімок ToList().

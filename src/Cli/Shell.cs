@@ -6,6 +6,7 @@ using Core.Dto;
 using Core.Events;
 using Core.Import;
 using Core.Notifications;
+using Core.Reports;
 using Core.Services;
 using Core.Storage;
 
@@ -36,6 +37,7 @@ internal static class Shell
 
         // Підписник 2: лямбда-лічильник із замиканням над змінною events
         int events = 0;
+        var customers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         service.Changed += (_, _) => events++;
 
         Console.WriteLine("=== CrossApp shell (ЛР5-ЛР7) ===");
@@ -76,6 +78,7 @@ internal static class Shell
             {
                 case "help":
                     PrintHelp();
+                    PrintReportHelp();
                     return true;
 
                 case "exit":
@@ -179,6 +182,125 @@ internal static class Shell
                     return true;
                 }
 
+                case "customer":
+                {
+                    if (p.Length < 3) { Console.WriteLine("  Використання: customer <id> \"Ім'я\""); return true; }
+                    customers[p[1]] = p[2];
+                    Console.WriteLine($"  Клієнта {p[1]} ({p[2]}) зареєстровано для report join.");
+                    return true;
+                }
+
+                case "report":
+                {
+                    string kind = p.Length > 1 ? p[1].ToLowerInvariant() : "";
+                    IReadOnlyList<Order> source = service.All();
+
+                    switch (kind)
+                    {
+                        case "top":
+                        {
+                            int n = p.Length > 2 && int.TryParse(p[2], out int parsedN) ? parsedN : 5;
+                            Console.WriteLine($"  ТОП-{n} замовлень за сумою:");
+                            PrintOrderLines(ReportService.TopByTotal(source, n));
+                            return true;
+                        }
+
+                        case "ext":
+                        {
+                            int n = p.Length > 2 && int.TryParse(p[2], out int parsedN) ? parsedN : 3;
+                            Console.WriteLine($"  ТОП-{n} замовлень за кількістю позицій (TopBy):");
+                            PrintOrderLines(ReportService.TopByLines(source, n));
+                            return true;
+                        }
+
+                        case "high":
+                        {
+                            decimal min = p.Length > 2
+                                && decimal.TryParse(p[2].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedMin)
+                                ? parsedMin : 800m;
+                            Console.WriteLine($"  Замовлення із сумою >= {min:F2}:");
+                            PrintOrderLines(ReportService.HighValueOrders(source, min));
+                            return true;
+                        }
+
+                        case "groups":
+                        case "query":
+                        {
+                            var groups = kind == "groups"
+                                ? ReportService.ByStatus(source)
+                                : ReportService.ByStatusQuerySyntax(source);
+                            Console.WriteLine(kind == "groups"
+                                ? "  Розподіл за статусами (method syntax):"
+                                : "  Розподіл за статусами (query syntax):");
+                            foreach (StatusGroupSummary g in groups)
+                                Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
+                            return true;
+                        }
+
+                        case "sum":
+                        {
+                            var t = ReportService.Totals(source);
+                            Console.WriteLine($"  Усього замовлень : {t.Count}");
+                            Console.WriteLine($"  Загальна сума    : {t.Total:F2}");
+                            Console.WriteLine($"  Середній чек     : {t.Average:F2}");
+                            Console.WriteLine($"  Максимальний чек : {t.Max:F2}");
+                            return true;
+                        }
+
+                        case "join":
+                        {
+                            var customerList = source.Select(o => o.CustomerId).Distinct()
+                                .Select(id => new CustomerDto(id, customers.TryGetValue(id, out var nm) ? nm : "(ім'я не вказано)"))
+                                .Concat(customers
+                                    .Where(c => !source.Any(o => o.CustomerId.Equals(c.Key, StringComparison.OrdinalIgnoreCase)))
+                                    .Select(c => new CustomerDto(c.Key, c.Value)))
+                                .ToList();
+                            Console.WriteLine("  GroupJoin: клієнти x замовлення (клієнт без замовлень теж лишається):");
+                            foreach (CustomerOrdersSummary s in ReportService.CustomerOrdersReport(customerList, source))
+                                Console.WriteLine($"  {s.CustomerId,-8} {s.CustomerName,-24} Замовлень: {s.OrdersCount,2}  Загалом: {s.TotalAmount,10:F2}");
+                            return true;
+                        }
+
+                        case "deferred":
+                        {
+                            decimal limit = p.Length > 2
+                                && decimal.TryParse(p[2].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedLimit)
+                                ? parsedLimit : 500m;
+
+                            var list = service.All().ToList();
+                            var query = list.Where(o => o.Total > limit);
+                            Console.WriteLine($"  Запит побудовано, але ще не виконано. До змін Count(): {query.Count()}");
+
+                            Order temp = service.CreateOrder("C-DEFERRED");
+                            service.AddLine(temp.Id, "P-TMP", "Тимчасовий товар", limit + 1, 1);
+                            list.Add(service.Find(temp.Id)!);
+                            Console.WriteLine($"  Після додавання реального замовлення {temp.Id} у джерело Count(): {query.Count()}");
+
+                            var snapshot = query.ToList();
+                            list.Clear();
+                            Console.WriteLine($"  Після Clear(): у знімку (ToList) {snapshot.Count}, у самому запиті Count() {query.Count()}");
+
+                            service.Remove(temp.Id);
+                            Console.WriteLine($"  Тимчасове замовлення {temp.Id} видалено зі сховища.");
+                            return true;
+                        }
+
+                        case "bench":
+                        {
+                            int count = p.Length > 2 && int.TryParse(p[2], out int parsedCount) ? parsedCount : 100_000;
+                            var (withToList, withoutToList) = ReportService.RunBenchmark(count);
+                            Console.WriteLine($"  {count} згенерованих записів:");
+                            Console.WriteLine($"  1) З ToList() усередині ланцюжка : {withToList} ms");
+                            Console.WriteLine($"  2) БЕЗ ToList() усередині        : {withoutToList} ms");
+                            return true;
+                        }
+
+                        default:
+                            PrintReportHelp();
+                            return true;
+                    }
+                }
+
                 case "events":
                     Console.WriteLine($"  Подій отримано лічильником: {events}; логер {(logging ? "увімкнено" : "вимкнено")}.");
                     return true;
@@ -216,6 +338,31 @@ internal static class Shell
                     return true;
             }
         }
+    }
+
+    private static void PrintOrderLines(IReadOnlyList<OrderReportLine> lines)
+    {
+        if (lines.Count == 0)
+        {
+            Console.WriteLine("  (порожньо)");
+            return;
+        }
+
+        foreach (OrderReportLine l in lines)
+            Console.WriteLine($"  {l.OrderId,-10} Клієнт: {l.CustomerId,-8} Рядків: {l.LinesCount,2} Сума: {l.Total,10:F2} [{l.Status}]");
+    }
+
+    private static void PrintReportHelp()
+    {
+        Console.WriteLine("  customer <id> \"Ім'я\"                  - зареєструвати клієнта для report join");
+        Console.WriteLine("  report top [n]                         - топ-n замовлень за сумою (TopBy)");
+        Console.WriteLine("  report ext [n]                         - топ-n за кількістю позицій");
+        Console.WriteLine("  report high [мін.сума]                 - замовлення від суми (Where+сортування)");
+        Console.WriteLine("  report groups | report query           - розподіл за статусами (GroupBy)");
+        Console.WriteLine("  report sum                             - кількість, сума, середній і макс. чек");
+        Console.WriteLine("  report join                            - GroupJoin клієнтів і замовлень");
+        Console.WriteLine("  report deferred [поріг]                - відкладене виконання на реальних даних");
+        Console.WriteLine("  report bench [n]                       - Stopwatch: ToList усередині ланцюжка чи ні");
     }
 
     private static INotificationSink? CreateSink(string[] args, string sinkLogPath)
