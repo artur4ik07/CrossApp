@@ -1,5 +1,7 @@
-using Core.Domain;
+﻿using Core.Domain;
+using Core.Dto;
 using Core.Events;
+using Core.Import;
 using Core.Services;
 using Core.Storage;
 using Xunit;
@@ -9,7 +11,6 @@ namespace Core.Tests;
 public class OrderServiceTests
 {
     [Fact]
-    // 1) Інваріант: відмова та збереження стану
     public void AddLine_WithNegativeQuantity_Throws_AndKeepsState()
     {
         var store = new InMemoryOrderStore();
@@ -21,7 +22,6 @@ public class OrderServiceTests
     }
 
     [Fact]
-    // 2) Перевірка виклику події
     public void CreateOrder_RaisesChangedExactlyOnce()
     {
         var service = new OrderService(new InMemoryOrderStore());
@@ -37,7 +37,6 @@ public class OrderServiceTests
     [Theory]
     [InlineData(100, 2)]
     [InlineData(500, 0)]
-    // 3) Звіт на кількох наборах даних (Theory + InlineData)
     public void Search_FiltersByTotalCorrectly(decimal minTotal, int expectedCount)
     {
         var store = new InMemoryOrderStore(TestData.SampleOrders());
@@ -49,7 +48,6 @@ public class OrderServiceTests
     }
 
     [Fact]
-    // 4) Детермінованість сортування TopBy
     public void TopByQuantity_IsDeterministic()
     {
         var orders = TestData.SampleOrders();
@@ -59,16 +57,44 @@ public class OrderServiceTests
     }
 
     [Fact]
-    // 5) Перевірка скасування (CancellationToken)
     public async Task ImportAsync_WhenAlreadyCancelled_ThrowsOperationCanceledException()
     {
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
         var service = new OrderService(new InMemoryOrderStore());
-        var importer = new Core.Import.JsonOrderImporter();
+        var importer = new JsonOrderImporter();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => service.ImportAsync(importer, "any.json", cts.Token));
+    }
+
+    [Fact]
+    public async Task ImportStreamAsync_ReportsProgressCorrectly()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"orders_test_{Guid.NewGuid():N}.json");
+        var json = @"[
+            {""id"":""ORD-P01"",""customerId"":""C-001"",""status"":""Draft"",""lines"":[]},
+            {""id"":""ORD-P02"",""customerId"":""C-002"",""status"":""Draft"",""lines"":[]}
+        ]";
+        await File.WriteAllTextAsync(tempFile, json);
+
+        try
+        {
+            var service = new OrderService(new InMemoryOrderStore());
+            var importer = new JsonOrderImporter();
+            var progressReports = new List<ImportProgressInfo>();
+            var progress = new Progress<ImportProgressInfo>(p => progressReports.Add(p));
+
+            int added = await service.ImportStreamAsync(importer, tempFile, progress);
+
+            Assert.Equal(2, added);
+            Assert.NotEmpty(progressReports);
+            Assert.Equal(100, progressReports.Last().Percent);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
     }
 }

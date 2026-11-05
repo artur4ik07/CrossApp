@@ -85,4 +85,23 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
         }
         return added;
     }
+
+    public async Task<int> ImportStreamAsync(
+        IStreamOrderImporter importer, 
+        string path, 
+        IProgress<Core.Dto.ImportProgressInfo>? progress = null, 
+        CancellationToken ct = default)
+    {
+        int added = 0;
+        await foreach (var item in importer.LoadStreamAsync(path, progress, ct))
+        {
+            if (_store.GetById(item.Id) is not null) 
+                continue;
+
+            _store.Add(item);
+            OnChanged(item, OrderChangeKind.Created);
+            added++;
+        }
+        return added;
+    }
 }
