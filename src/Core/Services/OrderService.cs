@@ -68,4 +68,21 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
 
     public IReadOnlyList<Order> Search(Func<Order, bool> predicate) =>
         _store.List().Where(predicate).ToList();
+        
+    public async Task<int> ImportAsync(IOrderImporter importer, string path, CancellationToken ct = default)
+    {
+        var items = await importer.LoadAsync(path, ct);
+        int added = 0;
+        foreach (var item in items)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_store.GetById(item.Id) is not null) 
+                continue; // Ідемпотентність: дублікати пропускаємо
+
+            _store.Add(item);
+            OnChanged(item, OrderChangeKind.Created);
+            added++;
+        }
+        return added;
+    }
 }
