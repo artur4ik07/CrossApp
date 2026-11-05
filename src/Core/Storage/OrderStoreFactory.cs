@@ -2,17 +2,21 @@
 
 namespace Core.Storage;
 
-// Фабрика: інкапсулює логіку вибору реалізації, яку раніше тримав Program.cs
-// напряму (тернарний вираз + ручний new). Composition root тепер викликає
-// лише OrderStoreFactory.Create(args), а не збирає реалізацію сам.
 public static class OrderStoreFactory
 {
+    public static string ResolveDataPath(string[] args)
+    {
+        int i = Array.IndexOf(args, "--data");
+        return i >= 0 && i + 1 < args.Length
+            ? args[i + 1]
+            : Path.Combine(AppContext.BaseDirectory, "data", "catalog.json");
+    }
+
     public static IOrderStore Create(string[] args)
     {
-        bool useFile = args.Contains("--file");
+        bool useFile = args.Contains("--file") || args.Contains("--data");
         bool useCaching = args.Contains("--cache");
-
-        string dataPath = Path.Combine(AppContext.BaseDirectory, "data", "catalog.json");
+        string dataPath = ResolveDataPath(args);
 
         IOrderStore store = useFile
             ? new FileOrderStore(dataPath)

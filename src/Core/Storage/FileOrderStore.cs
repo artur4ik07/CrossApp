@@ -7,7 +7,11 @@ namespace Core.Storage;
 
 public sealed class FileOrderStore(string path) : IOrderStore
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
     private readonly Dictionary<string, Order> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _path = Path.GetFullPath(path);
     private bool _loaded;

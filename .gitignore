@@ -482,3 +482,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+data/orders.json
+data/catalog.json
+logs/
+publish/

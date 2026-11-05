@@ -301,6 +301,52 @@ internal static class Shell
                     }
                 }
 
+                case "seed":
+                {
+                    int added = 0;
+                    foreach (Order seedOrder in SampleData.Orders())
+                    {
+                        if (service.Find(seedOrder.Id) is null)
+                        {
+                            store.Add(seedOrder);
+                            added++;
+                        }
+                    }
+                    Console.WriteLine($"  Додано стартових замовлень: {added}. Усього у сховищі: {service.All().Count}.");
+                    return true;
+                }
+
+                case "file":
+                {
+                    bool fileBacked = args.Contains("--file") || args.Contains("--data");
+                    if (!fileBacked)
+                    {
+                        Console.WriteLine("  Сховище в пам'яті, файлу немає. Запустіть з --data data\\orders.json");
+                        return true;
+                    }
+
+                    string storagePath = OrderStoreFactory.ResolveDataPath(args);
+                    if (!File.Exists(storagePath))
+                    {
+                        Console.WriteLine($"  Файлу {Path.GetFullPath(storagePath)} ще немає (нічого не збережено).");
+                        return true;
+                    }
+
+                    string fileText = File.ReadAllText(storagePath, System.Text.Encoding.UTF8);
+                    if (p.Length > 1 && p[1].Equals("raw", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine(fileText);
+                        return true;
+                    }
+
+                    using var fileDoc = System.Text.Json.JsonDocument.Parse(fileText);
+                    Console.WriteLine($"  Файл: {Path.GetFullPath(storagePath)}");
+                    Console.WriteLine($"  Записів у файлі: {fileDoc.RootElement.GetArrayLength()}");
+                    foreach (var el in fileDoc.RootElement.EnumerateArray())
+                        Console.WriteLine($"  {el.GetProperty("Id").GetString(),-10} клієнт {el.GetProperty("CustomerId").GetString(),-8} {el.GetProperty("Status").GetString(),-10} рядків: {el.GetProperty("Lines").GetArrayLength()}");
+                    return true;
+                }
+
                 case "events":
                     Console.WriteLine($"  Подій отримано лічильником: {events}; логер {(logging ? "увімкнено" : "вимкнено")}.");
                     return true;

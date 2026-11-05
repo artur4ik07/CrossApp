@@ -1,4 +1,6 @@
-﻿namespace Core.Reports;
+﻿using Core.Domain;
+
+namespace Core.Reports;
 
 public static class LinqExtensions
 {
@@ -13,9 +15,9 @@ public static class LinqExtensions
         return source.OrderByDescending(keySelector).Take(count);
     }
 
-    public static IEnumerable<Core.Domain.Order> TopBy<TKey>(
-        this IEnumerable<Core.Domain.Order> source,
-        Func<Core.Domain.Order, TKey> keySelector,
+    public static IEnumerable<Order> TopBy<TKey>(
+        this IEnumerable<Order> source,
+        Func<Order, TKey> keySelector,
         int count)
     {
         ArgumentNullException.ThrowIfNull(source);
