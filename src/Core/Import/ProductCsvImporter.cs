@@ -51,12 +51,12 @@ public static class ProductCsvImporter
             [_, "", _] => new ParseFailed("назва порожня"),
             [var id, _, _] when string.IsNullOrWhiteSpace(id)
                 => new ParseFailed("id порожній"),
-            [_, _, var price] when !decimal.TryParse(
-                price, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal p) || p < 0
-                => new ParseFailed($"ціна '{price}' не є коректним невід'ємним числом"),
-            [var id, var name, var price]
-                => new ParseOk(new ProductDto(
-                    id, name, decimal.Parse(price, NumberStyles.Number, CultureInfo.InvariantCulture))),
+                [_, _, var price] when !decimal.TryParse(
+                    price, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal p) || p < 0
+                    => new ParseFailed($"ціна '{price}' не є коректним невід'ємним числом"),
+                    [var id, var name, var price]
+                    => new ParseOk(new ProductDto(
+                        id, name, decimal.Parse(price, NumberStyles.Number, CultureInfo.InvariantCulture))),
             _ => new ParseFailed($"занадто багато колонок: {parts.Length}")
         };
     }

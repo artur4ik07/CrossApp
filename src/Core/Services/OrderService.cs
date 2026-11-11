@@ -68,7 +68,7 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
 
     public IReadOnlyList<Order> Search(Func<Order, bool> predicate) =>
         _store.List().Where(predicate).ToList();
-        
+
     public async Task<int> ImportAsync(IOrderImporter importer, string path, CancellationToken ct = default)
     {
         var items = await importer.LoadAsync(path, ct);
@@ -76,7 +76,7 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
         foreach (var item in items)
         {
             ct.ThrowIfCancellationRequested();
-            if (_store.GetById(item.Id) is not null) 
+            if (_store.GetById(item.Id) is not null)
                 continue; // Ідемпотентність: дублікати пропускаємо
 
             _store.Add(item);
@@ -87,15 +87,15 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
     }
 
     public async Task<int> ImportStreamAsync(
-        IStreamOrderImporter importer, 
-        string path, 
-        IProgress<Core.Dto.ImportProgressInfo>? progress = null, 
+        IStreamOrderImporter importer,
+        string path,
+        IProgress<Core.Dto.ImportProgressInfo>? progress = null,
         CancellationToken ct = default)
     {
         int added = 0;
         await foreach (var item in importer.LoadStreamAsync(path, progress, ct))
         {
-            if (_store.GetById(item.Id) is not null) 
+            if (_store.GetById(item.Id) is not null)
                 continue;
 
             _store.Add(item);

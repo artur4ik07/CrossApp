@@ -97,4 +97,37 @@ public class OrderServiceTests
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
     }
+
+    [Fact]
+    public async Task ImportAsync_WithLinkedToken_TimesOutCorrectly()
+    {
+        using var userCts = new CancellationTokenSource();
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(userCts.Token, timeoutCts.Token);
+
+        var tempFile = Path.Combine(Path.GetTempPath(), $"orders_timeout_{Guid.NewGuid():N}.json");
+        var sb = new System.Text.StringBuilder("[");
+        for (int i = 0; i < 5000; i++)
+        {
+            sb.Append(@"{""id"":""ORD-T" + i + @""",""customerId"":""C-001"",""status"":""Draft"",""lines"":[]}" + (i < 4999 ? "," : ""));
+        }
+        sb.Append("]");
+        await File.WriteAllTextAsync(tempFile, sb.ToString());
+
+        try
+        {
+            var service = new OrderService(new InMemoryOrderStore());
+            var importer = new JsonOrderImporter();
+
+            var ex = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => service.ImportStreamAsync(importer, tempFile, ct: linkedCts.Token));
+
+            Assert.True(timeoutCts.IsCancellationRequested, "Скасування мало відбутися саме через таймаут");
+            Assert.False(userCts.IsCancellationRequested, "Користувацький токен не мав бути скасований");
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
 }

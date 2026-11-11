@@ -86,298 +86,298 @@ internal static class Shell
                     return false;
 
                 case "list":
-                {
-                    var all = service.All();
-                    Console.WriteLine($"  Усього: {all.Count}");
-                    foreach (Order o in all)
-                        Console.WriteLine($"  {o}");
-                    return true;
-                }
+                    {
+                        var all = service.All();
+                        Console.WriteLine($"  Усього: {all.Count}");
+                        foreach (Order o in all)
+                            Console.WriteLine($"  {o}");
+                        return true;
+                    }
 
                 case "get":
-                {
-                    if (p.Length < 2) { Console.WriteLine("  Використання: get <id>"); return true; }
-                    Order? found = service.Find(p[1]);
-                    Console.WriteLine(found is null ? $"  Замовлення {p[1]} не знайдено." : $"  {found}");
-                    return true;
-                }
+                    {
+                        if (p.Length < 2) { Console.WriteLine("  Використання: get <id>"); return true; }
+                        Order? found = service.Find(p[1]);
+                        Console.WriteLine(found is null ? $"  Замовлення {p[1]} не знайдено." : $"  {found}");
+                        return true;
+                    }
 
                 case "add":
-                {
-                    if (p.Length < 2) { Console.WriteLine("  Використання: add <customerId>"); return true; }
-                    Order created = service.CreateOrder(p[1]);
-                    Console.WriteLine($"  Створено: {created}");
-                    return true;
-                }
+                    {
+                        if (p.Length < 2) { Console.WriteLine("  Використання: add <customerId>"); return true; }
+                        Order created = service.CreateOrder(p[1]);
+                        Console.WriteLine($"  Створено: {created}");
+                        return true;
+                    }
 
                 case "line":
-                {
-                    if (p.Length < 6) { Console.WriteLine("  Використання: line <orderId> <productId> \"назва\" <ціна> <кількість>"); return true; }
-                    if (!decimal.TryParse(p[4].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal price))
-                    { Console.WriteLine($"  Ціна '{p[4]}' не є числом."); return true; }
-                    if (!int.TryParse(p[5], out int qty))
-                    { Console.WriteLine($"  Кількість '{p[5]}' не є цілим числом."); return true; }
-                    service.AddLine(p[1], p[2], p[3], price, qty);
-                    Console.WriteLine($"  Оновлено: {service.Find(p[1])}");
-                    return true;
-                }
+                    {
+                        if (p.Length < 6) { Console.WriteLine("  Використання: line <orderId> <productId> \"назва\" <ціна> <кількість>"); return true; }
+                        if (!decimal.TryParse(p[4].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal price))
+                        { Console.WriteLine($"  Ціна '{p[4]}' не є числом."); return true; }
+                        if (!int.TryParse(p[5], out int qty))
+                        { Console.WriteLine($"  Кількість '{p[5]}' не є цілим числом."); return true; }
+                        service.AddLine(p[1], p[2], p[3], price, qty);
+                        Console.WriteLine($"  Оновлено: {service.Find(p[1])}");
+                        return true;
+                    }
 
                 case "confirm":
-                {
-                    if (p.Length < 2) { Console.WriteLine("  Використання: confirm <id>"); return true; }
-                    service.Confirm(p[1]);
-                    Console.WriteLine($"  Підтверджено: {service.Find(p[1])}");
-                    return true;
-                }
+                    {
+                        if (p.Length < 2) { Console.WriteLine("  Використання: confirm <id>"); return true; }
+                        service.Confirm(p[1]);
+                        Console.WriteLine($"  Підтверджено: {service.Find(p[1])}");
+                        return true;
+                    }
 
                 case "cancel":
-                {
-                    if (p.Length < 2) { Console.WriteLine("  Використання: cancel <id>"); return true; }
-                    service.Cancel(p[1]);
-                    Console.WriteLine($"  Скасовано: {service.Find(p[1])}");
-                    return true;
-                }
+                    {
+                        if (p.Length < 2) { Console.WriteLine("  Використання: cancel <id>"); return true; }
+                        service.Cancel(p[1]);
+                        Console.WriteLine($"  Скасовано: {service.Find(p[1])}");
+                        return true;
+                    }
 
                 case "remove":
-                {
-                    if (p.Length < 2) { Console.WriteLine("  Використання: remove <id>"); return true; }
-                    Console.WriteLine(service.Remove(p[1]) ? $"  Видалено {p[1]}." : $"  Замовлення {p[1]} не знайдено.");
-                    return true;
-                }
+                    {
+                        if (p.Length < 2) { Console.WriteLine("  Використання: remove <id>"); return true; }
+                        Console.WriteLine(service.Remove(p[1]) ? $"  Видалено {p[1]}." : $"  Замовлення {p[1]} не знайдено.");
+                        return true;
+                    }
 
                 case "search":
-                {
-                    if (p.Length < 2) { Console.WriteLine("  Використання: search <confirmed|draft|cancelled|customer|min-total|max-total|min-lines> [значення]"); return true; }
-                    string? value = p.Length > 2 ? p[2] : null;
-                    Func<Order, bool>? predicate = BuildPredicate(p[1].ToLowerInvariant(), value);
-                    if (predicate is null)
                     {
-                        Console.WriteLine($"  Невідомий або некоректний критерій: '{p[1]}' зі значенням '{value}'.");
+                        if (p.Length < 2) { Console.WriteLine("  Використання: search <confirmed|draft|cancelled|customer|min-total|max-total|min-lines> [значення]"); return true; }
+                        string? value = p.Length > 2 ? p[2] : null;
+                        Func<Order, bool>? predicate = BuildPredicate(p[1].ToLowerInvariant(), value);
+                        if (predicate is null)
+                        {
+                            Console.WriteLine($"  Невідомий або некоректний критерій: '{p[1]}' зі значенням '{value}'.");
+                            return true;
+                        }
+                        IReadOnlyList<Order> found = service.Search(predicate);
+                        Console.WriteLine($"  Знайдено: {found.Count}");
+                        foreach (Order o in found)
+                            Console.WriteLine($"  {o}");
                         return true;
                     }
-                    IReadOnlyList<Order> found = service.Search(predicate);
-                    Console.WriteLine($"  Знайдено: {found.Count}");
-                    foreach (Order o in found)
-                        Console.WriteLine($"  {o}");
-                    return true;
-                }
 
                 case "log":
-                {
-                    string mode = p.Length > 1 ? p[1].ToLowerInvariant() : "";
-                    if (mode == "off")
                     {
-                        if (logging) { service.Changed -= logHandler; logging = false; }
-                        Console.WriteLine("  Логер відписано: консоль і файл тепер мовчать, лічильник працює.");
+                        string mode = p.Length > 1 ? p[1].ToLowerInvariant() : "";
+                        if (mode == "off")
+                        {
+                            if (logging) { service.Changed -= logHandler; logging = false; }
+                            Console.WriteLine("  Логер відписано: консоль і файл тепер мовчать, лічильник працює.");
+                        }
+                        else if (mode == "on")
+                        {
+                            if (!logging) { service.Changed += logHandler; logging = true; }
+                            Console.WriteLine("  Логер підписано.");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"  Логер: {(logging ? "увімкнено" : "вимкнено")}. Використання: log on | log off");
+                        }
+                        return true;
                     }
-                    else if (mode == "on")
-                    {
-                        if (!logging) { service.Changed += logHandler; logging = true; }
-                        Console.WriteLine("  Логер підписано.");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"  Логер: {(logging ? "увімкнено" : "вимкнено")}. Використання: log on | log off");
-                    }
-                    return true;
-                }
 
                 case "customer":
-                {
-                    if (p.Length < 3) { Console.WriteLine("  Використання: customer <id> \"Ім'я\""); return true; }
-                    customers[p[1]] = p[2];
-                    Console.WriteLine($"  Клієнта {p[1]} ({p[2]}) зареєстровано для report join.");
-                    return true;
-                }
+                    {
+                        if (p.Length < 3) { Console.WriteLine("  Використання: customer <id> \"Ім'я\""); return true; }
+                        customers[p[1]] = p[2];
+                        Console.WriteLine($"  Клієнта {p[1]} ({p[2]}) зареєстровано для report join.");
+                        return true;
+                    }
 
                 case "report":
-                {
-                    string kind = p.Length > 1 ? p[1].ToLowerInvariant() : "";
-                    IReadOnlyList<Order> source = service.All();
-
-                    switch (kind)
                     {
-                        case "top":
+                        string kind = p.Length > 1 ? p[1].ToLowerInvariant() : "";
+                        IReadOnlyList<Order> source = service.All();
+
+                        switch (kind)
                         {
-                            int n = p.Length > 2 && int.TryParse(p[2], out int parsedN) ? parsedN : 5;
-                            Console.WriteLine($"  ТОП-{n} замовлень за сумою:");
-                            PrintOrderLines(ReportService.TopByTotal(source, n));
-                            return true;
+                            case "top":
+                                {
+                                    int n = p.Length > 2 && int.TryParse(p[2], out int parsedN) ? parsedN : 5;
+                                    Console.WriteLine($"  ТОП-{n} замовлень за сумою:");
+                                    PrintOrderLines(ReportService.TopByTotal(source, n));
+                                    return true;
+                                }
+
+                            case "ext":
+                                {
+                                    int n = p.Length > 2 && int.TryParse(p[2], out int parsedN) ? parsedN : 3;
+                                    Console.WriteLine($"  ТОП-{n} замовлень за кількістю позицій (TopBy):");
+                                    PrintOrderLines(ReportService.TopByLines(source, n));
+                                    return true;
+                                }
+
+                            case "high":
+                                {
+                                    decimal min = p.Length > 2
+                                        && decimal.TryParse(p[2].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedMin)
+                                        ? parsedMin : 800m;
+                                    Console.WriteLine($"  Замовлення із сумою >= {min:F2}:");
+                                    PrintOrderLines(ReportService.HighValueOrders(source, min));
+                                    return true;
+                                }
+
+                            case "groups":
+                            case "query":
+                                {
+                                    var groups = kind == "groups"
+                                        ? ReportService.ByStatus(source)
+                                        : ReportService.ByStatusQuerySyntax(source);
+                                    Console.WriteLine(kind == "groups"
+                                        ? "  Розподіл за статусами (method syntax):"
+                                        : "  Розподіл за статусами (query syntax):");
+                                    foreach (StatusGroupSummary g in groups)
+                                        Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
+                                    return true;
+                                }
+
+                            case "sum":
+                                {
+                                    var t = ReportService.Totals(source);
+                                    Console.WriteLine($"  Усього замовлень : {t.Count}");
+                                    Console.WriteLine($"  Загальна сума    : {t.Total:F2}");
+                                    Console.WriteLine($"  Середній чек     : {t.Average:F2}");
+                                    Console.WriteLine($"  Максимальний чек : {t.Max:F2}");
+                                    return true;
+                                }
+
+                            case "join":
+                                {
+                                    var customerList = source.Select(o => o.CustomerId).Distinct()
+                                        .Select(id => new CustomerDto(id, customers.TryGetValue(id, out var nm) ? nm : "(ім'я не вказано)"))
+                                        .Concat(customers
+                                            .Where(c => !source.Any(o => o.CustomerId.Equals(c.Key, StringComparison.OrdinalIgnoreCase)))
+                                            .Select(c => new CustomerDto(c.Key, c.Value)))
+                                        .ToList();
+                                    Console.WriteLine("  GroupJoin: клієнти x замовлення (клієнт без замовлень теж лишається):");
+                                    foreach (CustomerOrdersSummary s in ReportService.CustomerOrdersReport(customerList, source))
+                                        Console.WriteLine($"  {s.CustomerId,-8} {s.CustomerName,-24} Замовлень: {s.OrdersCount,2}  Загалом: {s.TotalAmount,10:F2}");
+                                    return true;
+                                }
+
+                            case "deferred":
+                                {
+                                    decimal limit = p.Length > 2
+                                        && decimal.TryParse(p[2].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedLimit)
+                                        ? parsedLimit : 500m;
+
+                                    var list = service.All().ToList();
+                                    var query = list.Where(o => o.Total > limit);
+                                    Console.WriteLine($"  Запит побудовано, але ще не виконано. До змін Count(): {query.Count()}");
+
+                                    Order temp = service.CreateOrder("C-DEFERRED");
+                                    service.AddLine(temp.Id, "P-TMP", "Тимчасовий товар", limit + 1, 1);
+                                    list.Add(service.Find(temp.Id)!);
+                                    Console.WriteLine($"  Після додавання реального замовлення {temp.Id} у джерело Count(): {query.Count()}");
+
+                                    var snapshot = query.ToList();
+                                    list.Clear();
+                                    Console.WriteLine($"  Після Clear(): у знімку (ToList) {snapshot.Count}, у самому запиті Count() {query.Count()}");
+
+                                    service.Remove(temp.Id);
+                                    Console.WriteLine($"  Тимчасове замовлення {temp.Id} видалено зі сховища.");
+                                    return true;
+                                }
+
+                            case "bench":
+                                {
+                                    int count = p.Length > 2 && int.TryParse(p[2], out int parsedCount) ? parsedCount : 100_000;
+                                    var (withToList, withoutToList) = ReportService.RunBenchmark(count);
+                                    Console.WriteLine($"  {count} згенерованих записів:");
+                                    Console.WriteLine($"  1) З ToList() усередині ланцюжка : {withToList} ms");
+                                    Console.WriteLine($"  2) БЕЗ ToList() усередині        : {withoutToList} ms");
+                                    return true;
+                                }
+
+                            default:
+                                PrintReportHelp();
+                                return true;
                         }
-
-                        case "ext":
-                        {
-                            int n = p.Length > 2 && int.TryParse(p[2], out int parsedN) ? parsedN : 3;
-                            Console.WriteLine($"  ТОП-{n} замовлень за кількістю позицій (TopBy):");
-                            PrintOrderLines(ReportService.TopByLines(source, n));
-                            return true;
-                        }
-
-                        case "high":
-                        {
-                            decimal min = p.Length > 2
-                                && decimal.TryParse(p[2].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedMin)
-                                ? parsedMin : 800m;
-                            Console.WriteLine($"  Замовлення із сумою >= {min:F2}:");
-                            PrintOrderLines(ReportService.HighValueOrders(source, min));
-                            return true;
-                        }
-
-                        case "groups":
-                        case "query":
-                        {
-                            var groups = kind == "groups"
-                                ? ReportService.ByStatus(source)
-                                : ReportService.ByStatusQuerySyntax(source);
-                            Console.WriteLine(kind == "groups"
-                                ? "  Розподіл за статусами (method syntax):"
-                                : "  Розподіл за статусами (query syntax):");
-                            foreach (StatusGroupSummary g in groups)
-                                Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
-                            return true;
-                        }
-
-                        case "sum":
-                        {
-                            var t = ReportService.Totals(source);
-                            Console.WriteLine($"  Усього замовлень : {t.Count}");
-                            Console.WriteLine($"  Загальна сума    : {t.Total:F2}");
-                            Console.WriteLine($"  Середній чек     : {t.Average:F2}");
-                            Console.WriteLine($"  Максимальний чек : {t.Max:F2}");
-                            return true;
-                        }
-
-                        case "join":
-                        {
-                            var customerList = source.Select(o => o.CustomerId).Distinct()
-                                .Select(id => new CustomerDto(id, customers.TryGetValue(id, out var nm) ? nm : "(ім'я не вказано)"))
-                                .Concat(customers
-                                    .Where(c => !source.Any(o => o.CustomerId.Equals(c.Key, StringComparison.OrdinalIgnoreCase)))
-                                    .Select(c => new CustomerDto(c.Key, c.Value)))
-                                .ToList();
-                            Console.WriteLine("  GroupJoin: клієнти x замовлення (клієнт без замовлень теж лишається):");
-                            foreach (CustomerOrdersSummary s in ReportService.CustomerOrdersReport(customerList, source))
-                                Console.WriteLine($"  {s.CustomerId,-8} {s.CustomerName,-24} Замовлень: {s.OrdersCount,2}  Загалом: {s.TotalAmount,10:F2}");
-                            return true;
-                        }
-
-                        case "deferred":
-                        {
-                            decimal limit = p.Length > 2
-                                && decimal.TryParse(p[2].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedLimit)
-                                ? parsedLimit : 500m;
-
-                            var list = service.All().ToList();
-                            var query = list.Where(o => o.Total > limit);
-                            Console.WriteLine($"  Запит побудовано, але ще не виконано. До змін Count(): {query.Count()}");
-
-                            Order temp = service.CreateOrder("C-DEFERRED");
-                            service.AddLine(temp.Id, "P-TMP", "Тимчасовий товар", limit + 1, 1);
-                            list.Add(service.Find(temp.Id)!);
-                            Console.WriteLine($"  Після додавання реального замовлення {temp.Id} у джерело Count(): {query.Count()}");
-
-                            var snapshot = query.ToList();
-                            list.Clear();
-                            Console.WriteLine($"  Після Clear(): у знімку (ToList) {snapshot.Count}, у самому запиті Count() {query.Count()}");
-
-                            service.Remove(temp.Id);
-                            Console.WriteLine($"  Тимчасове замовлення {temp.Id} видалено зі сховища.");
-                            return true;
-                        }
-
-                        case "bench":
-                        {
-                            int count = p.Length > 2 && int.TryParse(p[2], out int parsedCount) ? parsedCount : 100_000;
-                            var (withToList, withoutToList) = ReportService.RunBenchmark(count);
-                            Console.WriteLine($"  {count} згенерованих записів:");
-                            Console.WriteLine($"  1) З ToList() усередині ланцюжка : {withToList} ms");
-                            Console.WriteLine($"  2) БЕЗ ToList() усередині        : {withoutToList} ms");
-                            return true;
-                        }
-
-                        default:
-                            PrintReportHelp();
-                            return true;
                     }
-                }
 
                 case "seed":
-                {
-                    int added = 0;
-                    foreach (Order seedOrder in SampleData.Orders())
                     {
-                        if (service.Find(seedOrder.Id) is null)
+                        int added = 0;
+                        foreach (Order seedOrder in SampleData.Orders())
                         {
-                            store.Add(seedOrder);
-                            added++;
+                            if (service.Find(seedOrder.Id) is null)
+                            {
+                                store.Add(seedOrder);
+                                added++;
+                            }
                         }
+                        Console.WriteLine($"  Додано стартових замовлень: {added}. Усього у сховищі: {service.All().Count}.");
+                        return true;
                     }
-                    Console.WriteLine($"  Додано стартових замовлень: {added}. Усього у сховищі: {service.All().Count}.");
-                    return true;
-                }
 
                 case "file":
-                {
-                    bool fileBacked = args.Contains("--file") || args.Contains("--data");
-                    if (!fileBacked)
                     {
-                        Console.WriteLine("  Сховище в пам'яті, файлу немає. Запустіть з --data data\\orders.json");
+                        bool fileBacked = args.Contains("--file") || args.Contains("--data");
+                        if (!fileBacked)
+                        {
+                            Console.WriteLine("  Сховище в пам'яті, файлу немає. Запустіть з --data data\\orders.json");
+                            return true;
+                        }
+
+                        string storagePath = OrderStoreFactory.ResolveDataPath(args);
+                        if (!File.Exists(storagePath))
+                        {
+                            Console.WriteLine($"  Файлу {Path.GetFullPath(storagePath)} ще немає (нічого не збережено).");
+                            return true;
+                        }
+
+                        string fileText = File.ReadAllText(storagePath, System.Text.Encoding.UTF8);
+                        if (p.Length > 1 && p[1].Equals("raw", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Console.WriteLine(fileText);
+                            return true;
+                        }
+
+                        using var fileDoc = System.Text.Json.JsonDocument.Parse(fileText);
+                        Console.WriteLine($"  Файл: {Path.GetFullPath(storagePath)}");
+                        Console.WriteLine($"  Записів у файлі: {fileDoc.RootElement.GetArrayLength()}");
+                        foreach (var el in fileDoc.RootElement.EnumerateArray())
+                            Console.WriteLine($"  {el.GetProperty("Id").GetString(),-10} клієнт {el.GetProperty("CustomerId").GetString(),-8} {el.GetProperty("Status").GetString(),-10} рядків: {el.GetProperty("Lines").GetArrayLength()}");
                         return true;
                     }
-
-                    string storagePath = OrderStoreFactory.ResolveDataPath(args);
-                    if (!File.Exists(storagePath))
-                    {
-                        Console.WriteLine($"  Файлу {Path.GetFullPath(storagePath)} ще немає (нічого не збережено).");
-                        return true;
-                    }
-
-                    string fileText = File.ReadAllText(storagePath, System.Text.Encoding.UTF8);
-                    if (p.Length > 1 && p[1].Equals("raw", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Console.WriteLine(fileText);
-                        return true;
-                    }
-
-                    using var fileDoc = System.Text.Json.JsonDocument.Parse(fileText);
-                    Console.WriteLine($"  Файл: {Path.GetFullPath(storagePath)}");
-                    Console.WriteLine($"  Записів у файлі: {fileDoc.RootElement.GetArrayLength()}");
-                    foreach (var el in fileDoc.RootElement.EnumerateArray())
-                        Console.WriteLine($"  {el.GetProperty("Id").GetString(),-10} клієнт {el.GetProperty("CustomerId").GetString(),-8} {el.GetProperty("Status").GetString(),-10} рядків: {el.GetProperty("Lines").GetArrayLength()}");
-                    return true;
-                }
 
                 case "events":
                     Console.WriteLine($"  Подій отримано лічильником: {events}; логер {(logging ? "увімкнено" : "вимкнено")}.");
                     return true;
 
                 case "import":
-                {
-                    string csvPath = p.Length > 1 ? p[1] : Path.Combine("data", "sample.csv");
-                    string customer = p.Length > 2 ? p[2] : "C-IMPORT";
-                    if (!File.Exists(csvPath))
                     {
-                        Console.WriteLine($"  Файл не знайдено: {Path.GetFullPath(csvPath)}");
+                        string csvPath = p.Length > 1 ? p[1] : Path.Combine("data", "sample.csv");
+                        string customer = p.Length > 2 ? p[2] : "C-IMPORT";
+                        if (!File.Exists(csvPath))
+                        {
+                            Console.WriteLine($"  Файл не знайдено: {Path.GetFullPath(csvPath)}");
+                            return true;
+                        }
+
+                        int skipped = 0;
+                        // Action<string>: негайний звіт про кожен пропущений рядок під час парсингу
+                        ImportResult<ProductDto> result = ProductCsvImporter.Load(csvPath, message =>
+                        {
+                            skipped++;
+                            Console.WriteLine($"  [SKIPPED] {message}");
+                            File.AppendAllText(skippedPath, $"{DateTimeOffset.Now:HH:mm:ss} {csvPath}: {message}{Environment.NewLine}");
+                        });
+
+                        Order order = service.CreateOrder(customer);
+                        foreach (ProductDto product in result.Items)
+                            service.AddLine(order.Id, product.Id, product.Name, product.Price, 1);
+
+                        Console.WriteLine($"  Імпортовано {result.Items.Count} позицій у замовлення {order.Id}, пропущено {skipped}.");
+                        Console.WriteLine($"  Підсумок: {service.Find(order.Id)}");
                         return true;
                     }
-
-                    int skipped = 0;
-                    // Action<string>: негайний звіт про кожен пропущений рядок під час парсингу
-                    ImportResult<ProductDto> result = ProductCsvImporter.Load(csvPath, message =>
-                    {
-                        skipped++;
-                        Console.WriteLine($"  [SKIPPED] {message}");
-                        File.AppendAllText(skippedPath, $"{DateTimeOffset.Now:HH:mm:ss} {csvPath}: {message}{Environment.NewLine}");
-                    });
-
-                    Order order = service.CreateOrder(customer);
-                    foreach (ProductDto product in result.Items)
-                        service.AddLine(order.Id, product.Id, product.Name, product.Price, 1);
-
-                    Console.WriteLine($"  Імпортовано {result.Items.Count} позицій у замовлення {order.Id}, пропущено {skipped}.");
-                    Console.WriteLine($"  Підсумок: {service.Find(order.Id)}");
-                    return true;
-                }
 
                 default:
                     Console.WriteLine($"  Невідома команда '{p[0]}'. Введіть help.");

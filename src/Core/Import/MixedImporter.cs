@@ -51,9 +51,9 @@ public static class MixedImporter
 
         return parts switch
         {
-            ["P", var id, var name, var price] when decimal.TryParse(
-                price, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal p) && p >= 0
-                => new ParsedProduct(new ProductDto(id, name, p)),
+        ["P", var id, var name, var price] when decimal.TryParse(
+            price, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal p) && p >= 0
+            => new ParsedProduct(new ProductDto(id, name, p)),
 
             ["P", ..] => new ParsedError("некоректний рядок товару (очікую P;id;name;price)"),
 

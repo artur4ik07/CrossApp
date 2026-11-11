@@ -50,8 +50,8 @@ public sealed class JsonOrderImporter : IOrderImporter, IStreamOrderImporter
     }
 
     public async IAsyncEnumerable<Order> LoadStreamAsync(
-        string path, 
-        IProgress<ImportProgressInfo>? progress = null, 
+        string path,
+        IProgress<ImportProgressInfo>? progress = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
