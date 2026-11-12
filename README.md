@@ -262,3 +262,30 @@ dotnet run --project src/Cli -- report-deferred дає послідовніст�
 Звіти рахуються над реальним вмістом сховища (service.All()), а не над SampleData:
 замовлення, створені або видалені в сеансі, одразу видно у звітах.
 report deferred показує відкладене виконання: Count() до і після зміни джерела та знімок ToList().
+
+## Конфігурація та Secrets (ЛР9)
+
+Застосунок завантажує налаштування у такому порядку пріоритету (кожне наступне джерело перекриває попереднє):
+1. `appsettings.json` (базові налаштування для Production)
+2. `appsettings.{CROSSAPP_ENVIRONMENT}.json` (за замовчуванням `Development`)
+3. `user-secrets` (локальні секрети розробника поза репозиторієм)
+4. Змінні середовища з префіксом `CROSSAPP_` (або спрощена змінна `CROSSAPP_DATA_PATH`)
+5. Аргументи командного рядка
+
+### Таблиця ключів конфігурації
+
+| Ключ у JSON | Змінна середовища | Опис | Значення за замовчуванням |
+| :--- | :--- | :--- | :--- |
+| `EnvironmentName` | `CROSSAPP_EnvironmentName` | Назва середовища виконання | `Production` / `Development` |
+| `Logging:MinimumLevel` | `CROSSAPP_Logging__MinimumLevel` | Мінімальний рівень логування | `Warning` / `Debug` |
+| `Storage:DataPath` | `CROSSAPP_Storage__DataPath` або `CROSSAPP_DATA_PATH` | Каталог збереження даних | `data` |
+| `Storage:FileName` | `CROSSAPP_Storage__FileName` | Ім'я JSON-файлу сховища | `orders.json` |
+| `Orders:Currency` | `CROSSAPP_Orders__Currency` | Валюта замовлень | `UAH` |
+| `Integration:ApiKey` | `CROSSAPP_Integration__ApiKey` | Секретний ключ інтеграції (задається через `user-secrets`) | *(не задано)* |
+
+### Приклади запуску та перевизначення змінних
+
+* **PowerShell (Windows):**
+  ` = "C:\Temp\crossapp_data";  = "prod-secret-key"; dotnet run --project src/Cli -- export`
+* **Bash (Linux / macOS):**
+  `CROSSAPP_DATA_PATH=/tmp/crossapp_data CROSSAPP_Integration__ApiKey=prod-secret-key dotnet run --project src/Cli -- export`

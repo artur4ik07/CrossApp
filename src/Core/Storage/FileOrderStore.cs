@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Text.Encodings.Web;
+using System.Text.Json;
 using Core.Abstractions;
 using Core.Domain;
 using Core.Dto;
@@ -10,8 +11,10 @@ public sealed class FileOrderStore(string path) : IOrderStore
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+
     private readonly Dictionary<string, Order> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _path = Path.GetFullPath(path);
     private bool _loaded;
@@ -19,23 +22,40 @@ public sealed class FileOrderStore(string path) : IOrderStore
     private void EnsureLoaded()
     {
         if (_loaded) return;
-        if (File.Exists(_path))
+        if (!File.Exists(_path))
         {
-            var dtos = JsonSerializer.Deserialize<List<OrderDto>>(File.ReadAllText(_path)) ?? [];
+            _loaded = true;
+            return;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(_path);
+            var dtos = JsonSerializer.Deserialize<List<OrderDto>>(json, Options) ?? [];
+            _cache.Clear();
             foreach (var dto in dtos)
             {
                 var order = Order.FromDto(dto);
                 _cache[order.Id] = order;
             }
+            _loaded = true;
         }
-        _loaded = true;
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+        {
+            throw new DomainException($"Помилка читання файлу сховища '{Path.GetFileName(_path)}': {ex.Message}", ex);
+        }
     }
 
     private void Flush()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllText(_path,
-            JsonSerializer.Serialize(_cache.Values.Select(o => o.ToDto()).ToList(), Options));
+        var dir = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
+        var dtos = _cache.Values.Select(o => o.ToDto()).ToList();
+        var tmpPath = _path + ".tmp";
+        File.WriteAllText(tmpPath, JsonSerializer.Serialize(dtos, Options));
+        File.Move(tmpPath, _path, overwrite: true);
     }
 
     public IReadOnlyList<Order> List()
@@ -55,13 +75,14 @@ public sealed class FileOrderStore(string path) : IOrderStore
         ArgumentNullException.ThrowIfNull(item);
         EnsureLoaded();
         if (_cache.ContainsKey(item.Id))
-            throw new InvalidOperationException($"Запис з id={item.Id} уже існує.");
+            throw new InvalidOperationException($"Замовлення з id={item.Id} уже існує.");
         _cache.Add(item.Id, item);
         Flush();
     }
 
     public void Update(Order item)
     {
+        ArgumentNullException.ThrowIfNull(item);
         EnsureLoaded();
         _cache[item.Id] = item;
         Flush();
@@ -70,7 +91,8 @@ public sealed class FileOrderStore(string path) : IOrderStore
     public bool Remove(string id)
     {
         EnsureLoaded();
-        if (!_cache.Remove(id)) return false;
+        if (!_cache.Remove(id))
+            return false;
         Flush();
         return true;
     }
