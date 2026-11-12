@@ -12,7 +12,7 @@ using Core.Storage;
 
 internal static class Shell
 {
-    public static int Run(string[] args)
+    public static int Run(string[] args, string? defaultDataPath = null)
     {
         Console.InputEncoding = System.Text.Encoding.UTF8;
 
@@ -21,7 +21,7 @@ internal static class Shell
         string logPath = Path.Combine(logDir, "app.log");
         string skippedPath = Path.Combine(logDir, "import-skipped.log");
 
-        IOrderStore store = OrderStoreFactory.Create(args);
+        IOrderStore store = OrderStoreFactory.Create(args, defaultDataPath);
         INotificationSink? sink = CreateSink(args, Path.Combine(logDir, "sink.log"));
         var service = new OrderService(store, sink);
 
@@ -496,3 +496,4 @@ internal static class Shell
         Console.WriteLine("  exit                                   - вихід");
     }
 }
+

@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using Core;
 using Core.Configuration;
 using Core.Domain;
 using Core.Dto;
@@ -11,7 +12,7 @@ namespace Cli;
 
 internal class Program
 {
-    private static async Task Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         var envName = Environment.GetEnvironmentVariable("CROSSAPP_ENVIRONMENT") ?? "Development";
 
@@ -42,24 +43,34 @@ internal class Program
             ? "ApiKey : не заданий"
             : $"ApiKey : присутній, довжина {apiKey.Length}");
 
-        // Команда export для ЛР9 (експорт колекції в JSON через FileOrderStore)
+        // Команда export для ЛР9 з обробкою DomainException при зіпсованому JSON
         if (args.Length > 0 && args[0].Equals("export", StringComparison.OrdinalIgnoreCase))
         {
-            var store = new FileOrderStore(fullDataPath);
-            var service = new OrderService(store);
-
-            if (service.All().Count == 0)
+            try
             {
-                var o1 = service.CreateOrder("C-101");
-                service.AddLine(o1.Id, "P-01", "Кобзар", 249.00m, 2);
-                service.Confirm(o1.Id);
+                var store = new FileOrderStore(fullDataPath);
+                var service = new OrderService(store);
 
-                var o2 = service.CreateOrder("C-102");
-                service.AddLine(o2.Id, "P-02", "Тіні забутих предків", 189.50m, 1);
+                if (service.All().Count == 0)
+                {
+                    var o1 = service.CreateOrder("C-101");
+                    service.AddLine(o1.Id, "P-01", "Кобзар", 249.00m, 2);
+                    service.Confirm(o1.Id);
+
+                    var o2 = service.CreateOrder("C-102");
+                    service.AddLine(o2.Id, "P-02", "Тіні забутих предків", 189.50m, 1);
+                }
+
+                Console.WriteLine($"Експортовано {service.All().Count} записів у {fullDataPath}.");
+                return 0;
             }
-
-            Console.WriteLine($"Експортовано {service.All().Count} записів у {fullDataPath}.");
-            return;
+            catch (DomainException ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Помилка роботи з файлом даних: {ex.Message}");
+                Console.ResetColor();
+                return 1;
+            }
         }
 
         // Перевірка на наявність прапорця --import (ЛР8)
@@ -93,21 +104,23 @@ internal class Program
             {
                 int count = await service.ImportStreamAsync(importer, dataPath, progress, cts.Token);
                 Console.WriteLine($"\n\nУспішно імпортовано: {count} записів.");
+                return 0;
             }
             catch (OperationCanceledException)
             {
                 Console.WriteLine($"\n[РЕЗУЛЬТАТ] Операцію імпорту скасовано користувачем!");
                 Console.WriteLine($"Збережено записів у сховищі: {service.All().Count}");
+                return 1;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"\nПомилка імпорту: {ex.Message}");
+                return 1;
             }
-
-            return;
         }
 
-        // Запуск штатного Shell для інших команд CLI
-        Shell.Run(args);
+        // Коректний виклик асинхронного Shell з очікуванням завершення
+        return Shell.Run(args, fullDataPath);
     }
 }
+
