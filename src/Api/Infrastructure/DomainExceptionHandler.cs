@@ -8,10 +8,25 @@ public sealed class DomainExceptionHandler : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
+        if (exception is BadHttpRequestException badRequest)
+        {
+            var problem400 = new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Некоректний формат HTTP-запиту або JSON",
+                Detail = badRequest.Message,
+                Instance = httpContext.Request.Path
+            };
+
+            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await httpContext.Response.WriteAsJsonAsync(problem400, cancellationToken);
+            return true;
+        }
+
         if (exception is not (DomainException or InvalidOperationException))
             return false;
 
-        var problem = new ProblemDetails
+        var problem409 = new ProblemDetails
         {
             Status = StatusCodes.Status409Conflict,
             Title = "Порушення бізнес-правила або стану сутності",
@@ -20,7 +35,7 @@ public sealed class DomainExceptionHandler : IExceptionHandler
         };
 
         httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
-        await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(problem409, cancellationToken);
         return true;
     }
 }
