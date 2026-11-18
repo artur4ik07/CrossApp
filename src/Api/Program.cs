@@ -13,7 +13,22 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 builder.Services.AddValidatorsFromAssemblyContaining<SaveOrderRequestValidator>();
-builder.Services.AddSingleton<IOrderStore>(_ => new InMemoryOrderStore(SampleData.Orders()));
+
+builder.Services.AddSingleton<IOrderStore>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var env = sp.GetRequiredService<IHostEnvironment>();
+    var configuredPath = config["Storage:DataFile"] ?? "../../data/orders.json";
+    var dataFilePath = Path.GetFullPath(Path.Combine(env.ContentRootPath, configuredPath));
+
+    var store = new FileOrderStore(dataFilePath);
+    if (store.List().Count == 0)
+    {
+        foreach (var order in SampleData.Orders())
+            store.Add(order);
+    }
+    return store;
+});
 
 var app = builder.Build();
 

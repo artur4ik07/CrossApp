@@ -1,13 +1,38 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
 using Api.Contracts;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Api.Tests;
 
-public sealed class OrdersApiTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class CustomApiFactory : WebApplicationFactory<Program>, IDisposable
+{
+    private readonly string _tempFile = Path.Combine(Path.GetTempPath(), $"crossapp-test-{Guid.NewGuid():N}.json");
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Storage:DataFile"] = _tempFile
+            });
+        });
+    }
+
+    public new void Dispose()
+    {
+        base.Dispose();
+        if (File.Exists(_tempFile))
+            File.Delete(_tempFile);
+    }
+}
+
+public sealed class OrdersApiTests(CustomApiFactory factory)
+    : IClassFixture<CustomApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
