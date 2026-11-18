@@ -12,7 +12,7 @@ public sealed class JsonOrderImporter : IOrderImporter, IStreamOrderImporter
 
     public async Task<IReadOnlyList<Order>> LoadAsync(string path, CancellationToken ct = default)
     {
-        ct.ThrowIfCancellationRequested();
+        ct.ThrowIfCancellationRequested();                               // ImportAsync_WhenAlreadyCancelled_ThrowsOperationCanceledException 
 
         if (!File.Exists(path))
             throw new FileNotFoundException($"Файл не знайдено: {path}");
@@ -26,7 +26,8 @@ public sealed class JsonOrderImporter : IOrderImporter, IStreamOrderImporter
         }
         catch (JsonException ex)
         {
-            throw new DomainException($"Помилка структури JSON у файлі {Path.GetFileName(path)}", ex);
+            throw new DomainException($"Помилка структури JSON у файлі {Path.GetFileName(path)}", ex); 
+            //throw;                                                                         //LoadAsync_WithInvalidJson_ThrowsDomainException 
         }
 
         if (dtos is null)
@@ -90,7 +91,7 @@ public sealed class JsonOrderImporter : IOrderImporter, IStreamOrderImporter
 
             int processed = i + 1;
             int percent = (int)((double)processed / total * 100);
-            progress?.Report(new ImportProgressInfo(processed, total, percent));
+            progress?.Report(new ImportProgressInfo(processed, total, percent));                 //ImportStreamAsync_ReportsProgressCorrectly 
 
             yield return order;
         }

@@ -37,7 +37,7 @@ public sealed class Order
             throw new ArgumentException("Ідентифікатор товару обов'язковий", nameof(productId));
         if (string.IsNullOrWhiteSpace(productName))
             throw new ArgumentException("Назва товару обов'язкова", nameof(productName));
-        if (quantity <= 0)
+        if (quantity <= 0)                                                                            // AddLine_WithNegativeQuantity_Throws_AndKeepsStat
             throw new ArgumentOutOfRangeException(nameof(quantity), quantity, "Кількість у рядку має бути більшою за нуль");
         if (price < 0)
             throw new ArgumentOutOfRangeException(nameof(price), price, "Ціна не може бути від'ємною");

@@ -1,0 +1,69 @@
+﻿@Api_HostAddress = http://localhost:5080
+
+### Перевірка стану (Health)
+GET {{Api_HostAddress}}/health
+Accept: application/json
+
+### 1. Отримати всі замовлення
+GET {{Api_HostAddress}}/api/orders
+Accept: application/json
+
+### 2. Створити нове замовлення (201 Created)
+# @name createOrder
+POST {{Api_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "customerId": "C-500",
+  "status": "Draft",
+  "lines": [
+    {
+      "productId": "P-01",
+      "productName": "Кобзар",
+      "price": 249.00,
+      "quantity": 2
+    }
+  ]
+}
+
+### 3. Перевірка валідації (400 Bad Request)
+POST {{Api_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "customerId": "",
+  "lines": []
+}
+
+### 4. Отримати створене замовлення за ID
+@orderId = {{createOrder.response.body.$.id}}
+GET {{Api_HostAddress}}/api/orders/{{orderId}}
+Accept: application/json
+
+### 5. Отримати суму замовлення
+GET {{Api_HostAddress}}/api/orders/{{orderId}}/total
+Accept: application/json
+
+### 6. Оновити замовлення (200 OK)
+PUT {{Api_HostAddress}}/api/orders/{{orderId}}
+Content-Type: application/json
+
+{
+  "customerId": "C-500",
+  "status": "Confirmed",
+  "lines": [
+    {
+      "productId": "P-01",
+      "productName": "Кобзар (подарункове видання)",
+      "price": 350.00,
+      "quantity": 2
+    }
+  ]
+}
+
+### 7. Видалити замовлення (204 No Content)
+DELETE {{Api_HostAddress}}/api/orders/{{orderId}}
+
+### 8. Перевірка після видалення (404 Not Found)
+GET {{Api_HostAddress}}/api/orders/{{orderId}}
+Accept: application/json

@@ -289,3 +289,16 @@ report deferred показує відкладене виконання: Count() 
   ` = "C:\Temp\crossapp_data";  = "prod-secret-key"; dotnet run --project src/Cli -- export`
 * **Bash (Linux / macOS):**
   `CROSSAPP_DATA_PATH=/tmp/crossapp_data CROSSAPP_Integration__ApiKey=prod-secret-key dotnet run --project src/Cli -- export`
+
+## HTTP API та Scalar UI (ЛР10)
+
+API працює на порту **5080** (http://localhost:5080).
+Інтерактивна документація Scalar UI доступна у середовищі Development за адресою: http://localhost:5080/scalar/v1 (специфікація OpenAPI: /openapi/v1.json).
+
+### Запуск API
+dotnet run --project src/Api --urls http://localhost:5080
+
+### Приклади запитів (curl.exe)
+* Отримати список: curl.exe -i http://localhost:5080/api/orders
+* Створити (201): curl.exe -i -X POST http://localhost:5080/api/orders -H "Content-Type: application/json" -d "{\"customerId\":\"C-500\",\"lines\":[{\"productId\":\"P-01\",\"productName\":\"Кобзар\",\"price\":249.00,\"quantity\":2}]}"
+* Помилка валідації (400): curl.exe -i -X POST http://localhost:5080/api/orders -H "Content-Type: application/json" -d "{\"customerId\":\"\",\"lines\":[]}"

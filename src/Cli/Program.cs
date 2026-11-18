@@ -1,126 +1,664 @@
-﻿using System.Reflection;
+﻿using System.Globalization;
+using System.Reflection;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Core;
+using Core.Abstractions;
 using Core.Configuration;
 using Core.Domain;
 using Core.Dto;
+using Core.Events;
 using Core.Import;
+using Core.Notifications;
+using Core.Reports;
 using Core.Services;
 using Core.Storage;
 using Microsoft.Extensions.Configuration;
 
-namespace Cli;
+Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-internal class Program
+// === КОНФІГУРАЦІЯ ТА SECRETS (ЛР9) ===
+var envName = Environment.GetEnvironmentVariable("CROSSAPP_ENVIRONMENT") ?? "Development";
+
+var config = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+    .AddJsonFile($"appsettings.{envName}.json", optional: true, reloadOnChange: false)
+    .AddUserSecrets(Assembly.GetExecutingAssembly(), optional: true)
+    .AddEnvironmentVariables(prefix: "CROSSAPP_")
+    .AddCommandLine(args)
+    .Build();
+
+var options = config.Get<AppOptions>() ?? new AppOptions();
+var legacyDataPath = Environment.GetEnvironmentVariable("CROSSAPP_DATA_PATH");
+
+var storageOptions = new StorageOptions
 {
-    private static async Task<int> Main(string[] args)
+    DataPath = string.IsNullOrWhiteSpace(legacyDataPath) ? options.Storage.DataPath : legacyDataPath,
+    FileName = options.Storage.FileName
+};
+
+var fullDataPath = storageOptions.ResolveFullPath(AppContext.BaseDirectory);
+var apiKey = config["Integration:ApiKey"];
+
+// === КОМАНДА EXPORT (ЛР9) ===
+if (args.Length > 0 && args[0].Equals("export", StringComparison.OrdinalIgnoreCase))
+{
+    Console.WriteLine($"Профіль : {options.EnvironmentName} (Log: {options.Logging.MinimumLevel}, Валюта: {options.Orders.Currency})");
+    Console.WriteLine($"Файл даних: {fullDataPath}");
+    Console.WriteLine(apiKey is null
+        ? "ApiKey : не заданий"
+        : $"ApiKey : присутній, довжина {apiKey.Length}");
+
+    try
     {
-        var envName = Environment.GetEnvironmentVariable("CROSSAPP_ENVIRONMENT") ?? "Development";
+        var store = new FileOrderStore(fullDataPath);
+        var service = new OrderService(store);
 
-        var config = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-            .AddJsonFile($"appsettings.{envName}.json", optional: true, reloadOnChange: false)
-            .AddUserSecrets(Assembly.GetExecutingAssembly(), optional: true)
-            .AddEnvironmentVariables(prefix: "CROSSAPP_")
-            .AddCommandLine(args)
-            .Build();
-
-        var options = config.Get<AppOptions>() ?? new AppOptions();
-        var legacyDataPath = Environment.GetEnvironmentVariable("CROSSAPP_DATA_PATH");
-
-        var storageOptions = new StorageOptions
+        if (service.All().Count == 0)
         {
-            DataPath = string.IsNullOrWhiteSpace(legacyDataPath) ? options.Storage.DataPath : legacyDataPath,
-            FileName = options.Storage.FileName
-        };
+            var o1 = service.CreateOrder("C-101");
+            service.AddLine(o1.Id, "P-01", "Кобзар", 249.00m, 2);
+            service.Confirm(o1.Id);
 
-        var fullDataPath = storageOptions.ResolveFullPath(AppContext.BaseDirectory);
-        var apiKey = config["Integration:ApiKey"];
-
-        Console.WriteLine($"Профіль : {options.EnvironmentName} (Log: {options.Logging.MinimumLevel}, Валюта: {options.Orders.Currency})");
-        Console.WriteLine($"Файл даних: {fullDataPath}");
-        Console.WriteLine(apiKey is null
-            ? "ApiKey : не заданий"
-            : $"ApiKey : присутній, довжина {apiKey.Length}");
-
-        // Команда export для ЛР9 з обробкою DomainException при зіпсованому JSON
-        if (args.Length > 0 && args[0].Equals("export", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                var store = new FileOrderStore(fullDataPath);
-                var service = new OrderService(store);
-
-                if (service.All().Count == 0)
-                {
-                    var o1 = service.CreateOrder("C-101");
-                    service.AddLine(o1.Id, "P-01", "Кобзар", 249.00m, 2);
-                    service.Confirm(o1.Id);
-
-                    var o2 = service.CreateOrder("C-102");
-                    service.AddLine(o2.Id, "P-02", "Тіні забутих предків", 189.50m, 1);
-                }
-
-                Console.WriteLine($"Експортовано {service.All().Count} записів у {fullDataPath}.");
-                return 0;
-            }
-            catch (DomainException ex)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"Помилка роботи з файлом даних: {ex.Message}");
-                Console.ResetColor();
-                return 1;
-            }
+            var o2 = service.CreateOrder("C-102");
+            service.AddLine(o2.Id, "P-02", "Тіні забутих предків", 189.50m, 1);
         }
 
-        // Перевірка на наявність прапорця --import (ЛР8)
-        if (args.Length > 0 && args[0].Equals("--import", StringComparison.OrdinalIgnoreCase))
-        {
-            var dataPath = args.Length > 1 ? args[1] : fullDataPath;
-
-            Console.WriteLine("=== АСИНХРОННИЙ ІМПОРТ ДАНИХ ===");
-            Console.WriteLine($"Файл: {dataPath}");
-            Console.WriteLine("Для скасування натисніть [Ctrl+C]...\n");
-
-            using var cts = new CancellationTokenSource();
-
-            Console.CancelKeyPress += (sender, e) =>
-            {
-                e.Cancel = true;
-                Console.WriteLine("\n\n[CTRL+C] Отримано сигнал скасування! Зупиняємо імпорт...");
-                cts.Cancel();
-            };
-
-            var store = new FileOrderStore(fullDataPath);
-            var service = new OrderService(store);
-            var importer = new JsonOrderImporter();
-
-            var progress = new Progress<ImportProgressInfo>(p =>
-            {
-                Console.Write($"\rОбробка: {p.Processed}/{p.Total} записів ({p.Percent}%)   ");
-            });
-
-            try
-            {
-                int count = await service.ImportStreamAsync(importer, dataPath, progress, cts.Token);
-                Console.WriteLine($"\n\nУспішно імпортовано: {count} записів.");
-                return 0;
-            }
-            catch (OperationCanceledException)
-            {
-                Console.WriteLine($"\n[РЕЗУЛЬТАТ] Операцію імпорту скасовано користувачем!");
-                Console.WriteLine($"Збережено записів у сховищі: {service.All().Count}");
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"\nПомилка імпорту: {ex.Message}");
-                return 1;
-            }
-        }
-
-        // Коректний виклик асинхронного Shell з очікуванням завершення
-        return Shell.Run(args, fullDataPath);
+        Console.WriteLine($"Експортовано {service.All().Count} записів у {fullDataPath}.");
+        return 0;
+    }
+    catch (DomainException ex)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"Помилка роботи з файлом даних: {ex.Message}");
+        Console.ResetColor();
+        return 1;
     }
 }
 
+// === АСИНХРОННИЙ ПОТОКОВИЙ ІМПОРТ --import (ЛР8) ===
+if (args.Length > 0 && args[0].Equals("--import", StringComparison.OrdinalIgnoreCase))
+{
+    var dataPath = args.Length > 1 ? args[1] : fullDataPath;
+
+    Console.WriteLine("=== АСИНХРОННИЙ ІМПОРТ ДАНИХ ===");
+    Console.WriteLine($"Файл: {dataPath}");
+    Console.WriteLine("Для скасування натисніть [Ctrl+C]...\n");
+
+    using var cts = new CancellationTokenSource();
+
+    Console.CancelKeyPress += (sender, e) =>
+    {
+        e.Cancel = true;
+        Console.WriteLine("\n\n[CTRL+C] Отримано сигнал скасування! Зупиняємо імпорт...");
+        cts.Cancel();
+    };
+
+    var store = new FileOrderStore(fullDataPath);
+    var service = new OrderService(store);
+    var importer = new JsonOrderImporter();
+
+    var progress = new Progress<ImportProgressInfo>(p =>
+    {
+        Console.Write($"\rОбробка: {p.Processed}/{p.Total} записів ({p.Percent}%)   ");
+    });
+
+    try
+    {
+        int count = await service.ImportStreamAsync(importer, dataPath, progress, cts.Token);
+        Console.WriteLine($"\n\nУспішно імпортовано: {count} записів.");
+        return 0;
+    }
+    catch (OperationCanceledException)
+    {
+        Console.WriteLine($"\n[РЕЗУЛЬТАТ] Операцію імпорту скасовано користувачем!");
+        Console.WriteLine($"Збережено записів у сховищі: {service.All().Count}");
+        return 1;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"\nПомилка імпорту: {ex.Message}");
+        return 1;
+    }
+}
+
+// === КОМАНДА --env (ЛР1-ЛР2) ===
+if (args.Length > 0 && args[0] == "--env")
+{
+    EnvironmentReport report = EnvironmentInfo.Collect();
+
+    if (args.Contains("--json"))
+    {
+        var context = new ReportJsonContext(new JsonSerializerOptions
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
+        Console.WriteLine(JsonSerializer.Serialize(report, context.EnvironmentReport));
+        return 0;
+    }
+
+    Console.WriteLine("CrossApp – практикум з крос-платформного програмування");
+    Console.WriteLine("Студент: Подфедько Артур, група ФЕІ-37");
+    Console.WriteLine(new string('-', 52));
+    Console.WriteLine($"ОС (OSDescription)  : {report.OsDescription}");
+    Console.WriteLine($"ОС (Environment)    : {report.OsVersion}");
+    Console.WriteLine($"Архітектура процесу : {report.ProcessArchitecture}");
+    Console.WriteLine($"Версія .NET (CLR)   : {report.ClrVersion}");
+    Console.WriteLine($"Runtime             : {report.FrameworkDescription}");
+    Console.WriteLine($"RID (визначено)     : {report.DetectedRid}");
+    Console.WriteLine($"RID (від .NET)      : {report.ReportedRid}");
+    Console.WriteLine($"Збірка Core         : {report.BuildNote}");
+    Console.WriteLine($"Каталог застосунку  : {report.BaseDirectory}");
+    Console.WriteLine($"Поточний каталог    : {report.CurrentDirectory}");
+    Console.WriteLine(new string('-', 52));
+    Console.WriteLine("Предметна область: Замовлення (клієнт, товар, замовлення, рядок замовлення)");
+    return 0;
+}
+
+// === КОМАНДА --mixed (ЛР3) ===
+if (args.Length > 0 && args[0] == "--mixed")
+{
+    string mixedPath = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "data", "mixed.csv");
+
+    if (!File.Exists(mixedPath))
+    {
+        Console.WriteLine($"Файл не знайдено: {Path.GetFullPath(mixedPath)}");
+        return 1;
+    }
+
+    MixedImportResult mixed = MixedImporter.Load(mixedPath);
+
+    Console.WriteLine($"Товарів: {mixed.Products.Count}");
+    foreach (ProductDto p in mixed.Products)
+        Console.WriteLine($"  P {p.Id,-6} {p.Name,-25} {p.Price,10:F2}");
+
+    Console.WriteLine($"Клієнтів: {mixed.Customers.Count}");
+    foreach (CustomerDto c in mixed.Customers)
+        Console.WriteLine($"  C {c.Id,-6} {c.Name,-25} {c.Email}");
+
+    if (mixed.Errors.Count > 0)
+    {
+        Console.WriteLine($"Пропущено рядків: {mixed.Errors.Count}");
+        foreach (string e in mixed.Errors)
+            Console.WriteLine($"  ! {e}");
+    }
+
+    int mixedTotal = mixed.Products.Count + mixed.Customers.Count + mixed.Errors.Count;
+    double mixedErrorRate = mixedTotal == 0 ? 0 : (double)mixed.Errors.Count / mixedTotal * 100;
+    Console.WriteLine($"Усього: {mixedTotal}, Прийнято: {mixed.Products.Count + mixed.Customers.Count}, Пропущено: {mixed.Errors.Count}, Помилок: {mixedErrorRate:F1}%");
+    return 0;
+}
+
+// === КОМАНДИ --domain та --domain-advanced (ЛР4) ===
+if (args.Length > 0 && args[0] == "--domain")
+{
+    Console.WriteLine("=== Сценарій 1: успіх ===");
+    Order order = Order.Create("ORD-001", "C-001");
+    Console.WriteLine(order);
+    order.AddLine("P-001", "Кобзар", 249.00m, 2);
+    order.AddLine("P-002", "Тіні забутих предків", 189.50m, 1);
+    Console.WriteLine(order);
+    order.Confirm();
+    Console.WriteLine(order);
+    Console.WriteLine();
+
+    Console.WriteLine("=== Мапінг ToDto / FromDto ===");
+    OrderDto dto = order.ToDto();
+    Order restored = Order.FromDto(dto);
+    Console.WriteLine($"Відновлено з DTO: {restored}");
+    Console.WriteLine();
+
+    Console.WriteLine("=== Сценарій 2: порушення інваріантів ===");
+    TryDo("додавання рядка до підтвердженого замовлення", () => order.AddLine("P-003", "Лісова пісня", 159.00m, 1));
+    TryDo("нульова кількість у рядку", () => Order.Create("ORD-002", "C-002").AddLine("P-001", "Кобзар", 249.00m, 0));
+    TryDo("від'ємна ціна", () => Order.Create("ORD-003", "C-003").AddLine("P-001", "Кобзар", -10m, 1));
+    TryDo("порожній customerId", () => Order.Create("ORD-004", "  "));
+    TryDo("підтвердження порожнього замовлення", () => Order.Create("ORD-005", "C-005").Confirm());
+
+    Console.WriteLine();
+    Console.WriteLine($"Стан замовлення ORD-001 після всіх відмов: {order}");
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "--domain-advanced")
+{
+    Console.WriteLine("=== Завдання 1: ImportResult -> доменні сутності ===");
+    string productsPath = Path.Combine(AppContext.BaseDirectory, "data", "sample.csv");
+    ImportResult<ProductDto> importedProducts = ProductCsvImporter.Load(productsPath);
+
+    var productsForDemo = new List<ProductDto>(importedProducts.Items)
+    {
+        new ProductDto("P-999", "Товар з нульовою ціною", 0m)
+    };
+
+    ImportResult<OrderLine> lineResult = OrderLineFactory.FromProducts(productsForDemo);
+
+    Console.WriteLine($"З {productsForDemo.Count} товарів створено {lineResult.Items.Count} рядків замовлення");
+    foreach (OrderLine line in lineResult.Items.Take(3))
+        Console.WriteLine($"  {line.ProductId,-6} {line.ProductName,-30} {line.Price,10:F2}");
+    if (lineResult.Errors.Count > 0)
+    {
+        Console.WriteLine($"Відхилено доменними інваріантами: {lineResult.Errors.Count}");
+        foreach (string e in lineResult.Errors)
+            Console.WriteLine($"  ! {e}");
+    }
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 2: інваріант на двох сутностях ===");
+    var existingOrders = new List<Order>();
+    for (int i = 1; i <= OrderPlacementRules.MaxOpenOrdersPerCustomer; i++)
+    {
+        Order o = Order.Create($"ORD-C9-{i:000}", "C-009");
+        o.AddLine("P-001", "Кобзар", 249.00m, 1);
+        existingOrders.Add(o);
+    }
+    Console.WriteLine($"У клієнта C-009 вже {existingOrders.Count} непідтверджених замовлень");
+    TryDo("створення 6-го відкритого замовлення для того самого клієнта", () =>
+    {
+        OrderPlacementRules.EnsureCanPlaceNewOrder(existingOrders, "C-009");
+        Order sixth = Order.Create("ORD-C9-006", "C-009");
+        existingOrders.Add(sixth);
+    });
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 3: явні переходи станів OrderStatus ===");
+    Order so = Order.Create("ORD-900", "C-900");
+    so.AddLine("P-001", "Кобзар", 249.00m, 1);
+    Console.WriteLine($"Початковий стан: {so}");
+    so.Confirm();
+    Console.WriteLine($"Після Confirm(): {so}");
+    TryDo("повторне підтвердження вже підтвердженого замовлення", () => so.Confirm());
+    so.Cancel();
+    Console.WriteLine($"Після Cancel(): {so}");
+    TryDo("додавання рядка до скасованого замовлення", () => so.AddLine("P-002", "Тіні забутих предків", 100m, 1));
+    TryDo("підтвердження скасованого замовлення", () => so.Confirm());
+
+    return 0;
+}
+
+// === КОМАНДИ --store та --store-advanced (ЛР5) ===
+if (args.Length > 0 && args[0] == "--store")
+{
+    bool useFile = args.Contains("--file");
+
+    IOrderStore store = useFile
+        ? new FileOrderStore(fullDataPath)
+        : new InMemoryOrderStore(SampleData.Orders());
+
+    var service = new OrderService(store);
+
+    Console.WriteLine($"Сховище: {store.GetType().Name}");
+
+    Order created = service.CreateOrder("C-900");
+    service.AddLine(created.Id, "P-001", "Кобзар", 249.00m, 2);
+    service.Confirm(created.Id);
+
+    Console.WriteLine();
+    Console.WriteLine("=== Усі замовлення у сховищі ===");
+    foreach (Order o in service.All())
+        Console.WriteLine($"  {o}");
+
+    Console.WriteLine();
+    Console.WriteLine("=== Сценарій відмови ===");
+    TryDo("додавання замовлення з id, що вже існує", () =>
+    {
+        Order dup = Order.Create(created.Id, "C-901");
+        store.Add(dup);
+    });
+    TryDo("AddLine для неіснуючого id замовлення", () => service.AddLine("UNKNOWN-ID", "P-001", "Кобзар", 100m, 1));
+
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "--store-advanced")
+{
+    Console.WriteLine("=== Завдання 1: декоратор CachingOrderStore ===");
+    IOrderStore baseStore = new InMemoryOrderStore(SampleData.Orders());
+    var cachingStore = new CachingOrderStore(baseStore);
+
+    IReadOnlyList<Order> firstCall = cachingStore.List();
+    Console.WriteLine($"Перший виклик List(): {firstCall.Count} замовлень (читання зі сховища)");
+
+    IReadOnlyList<Order> secondCall = cachingStore.List();
+    Console.WriteLine($"Другий виклик List(): {secondCall.Count} замовлень (з кешу, той самий об'єкт списку: {ReferenceEquals(firstCall, secondCall)})");
+
+    cachingStore.Add(Order.Create("ORD-CACHE-01", "C-777"));
+    IReadOnlyList<Order> afterAdd = cachingStore.List();
+    Console.WriteLine($"Після Add() кеш інвалідовано: {afterAdd.Count} замовлень (новий об'єкт списку: {!ReferenceEquals(firstCall, afterAdd)})");
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 2: пошук через Func<Order, bool> ===");
+    var service = new OrderService(cachingStore);
+    IReadOnlyList<Order> confirmedOnly = service.Search(o => o.IsConfirmed);
+    Console.WriteLine($"Підтверджених замовлень: {confirmedOnly.Count}");
+    foreach (Order o in confirmedOnly.Take(3))
+        Console.WriteLine($"  {o}");
+
+    IReadOnlyList<Order> byCustomer = service.Search(o => o.CustomerId == "C-001");
+    Console.WriteLine($"Замовлень клієнта C-001: {byCustomer.Count}");
+    foreach (Order o in byCustomer)
+        Console.WriteLine($"  {o}");
+    Console.WriteLine();
+
+    Console.WriteLine("=== Завдання 3: OrderStoreFactory.Create(args) ===");
+    IOrderStore factoryStore = OrderStoreFactory.Create(args, fullDataPath);
+    Console.WriteLine($"Фабрика створила: {factoryStore.GetType().Name}");
+    var factoryService = new OrderService(factoryStore);
+    Console.WriteLine($"Записів у сховищі: {factoryService.All().Count}");
+
+    return 0;
+}
+
+// === КОМАНДИ --events, --sink, --import-report (ЛР6) ===
+if (args.Length > 0 && args[0] == "--events")
+{
+    string logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
+    Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+
+    void OnOrderChanged(object? sender, OrderChangedEventArgs e)
+    {
+        var line = $"{e.At:HH:mm:ss} {e.Kind,-10} {e.OrderId} рядків={e.LinesCount,2} сума={e.Total,10:F2}";
+        Console.WriteLine(line);
+        File.AppendAllText(logPath, line + Environment.NewLine);
+    }
+
+    var store = new InMemoryOrderStore(SampleData.Orders());
+    var service = new OrderService(store);
+
+    service.Changed += OnOrderChanged;
+
+    int changes = 0;
+    service.Changed += (_, _) => changes++;
+
+    Console.WriteLine("=== Сценарій подій: створення, додавання рядка, підтвердження ===");
+    Order created = service.CreateOrder("C-800");
+    service.AddLine(created.Id, "P-001", "Кобзар", 249.00m, 2);
+    service.Confirm(created.Id);
+
+    Console.WriteLine();
+    Console.WriteLine($"Подій отримано: {changes}");
+
+    service.Changed -= OnOrderChanged;
+
+    Console.WriteLine();
+    Console.WriteLine("=== Після відписки OnOrderChanged (лямбда-лічильник лишається підписаною) ===");
+    Order second = service.CreateOrder("C-801");
+    Console.WriteLine($"Подій отримано: {changes}");
+
+    Console.WriteLine();
+    Console.WriteLine("=== Сценарій відмови: подія НЕ виникає ===");
+    TryDo("AddLine з нульовою кількістю (порушення інваріанту)", () => service.AddLine(second.Id, "P-002", "Тіні забутих предків", 100m, 0));
+    TryDo("Confirm неіснуючого id", () => service.Confirm("UNKNOWN-ID"));
+    Console.WriteLine($"Подій отримано (без змін після відмов): {changes}");
+
+    Console.WriteLine();
+    Console.WriteLine("=== Пошук через Func<Order, bool> (service.Search) ===");
+    IReadOnlyList<Order> smallOrders = service.Search(o => o.Lines.Count < 2);
+    Console.WriteLine($"Замовлень з менш як 2 рядками: {smallOrders.Count}");
+    foreach (Order o in smallOrders.Take(5))
+        Console.WriteLine($"  {o}");
+
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "--sink")
+{
+    string logPath = Path.Combine(AppContext.BaseDirectory, "logs", "sink.log");
+
+    INotificationSink sink = args.Contains("--file-sink")
+        ? new FileSink(logPath)
+        : new ConsoleSink();
+
+    var store = new InMemoryOrderStore(SampleData.Orders());
+    var service = new OrderService(store, sink);
+
+    Console.WriteLine($"Sink: {sink.GetType().Name}");
+    Console.WriteLine();
+
+    Order order = service.CreateOrder("C-850");
+    service.AddLine(order.Id, "P-001", "Кобзар", 249.00m, 1);
+    service.Confirm(order.Id);
+
+    if (sink is FileSink)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Записано у файл, а не в консоль. Вміст:");
+        Console.WriteLine(File.ReadAllText(logPath));
+    }
+
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "--import-report")
+{
+    string csvPath = Path.Combine(AppContext.BaseDirectory, "data", "sample.csv");
+
+    Console.WriteLine("=== Імпорт з негайним звітом через Action<string> ===");
+    ImportResult<ProductDto> importResult = ProductCsvImporter.Load(
+        csvPath,
+        line => Console.WriteLine($"  [SKIPPED] {line}"));
+
+    Console.WriteLine();
+    Console.WriteLine($"Завантажено: {importResult.Items.Count}, пропущено: {importResult.Errors.Count}");
+
+    return 0;
+}
+
+// === КОМАНДИ ЗВІТІВ report-* (ЛР7) ===
+if (args.Length > 0 && args[0].StartsWith("report"))
+{
+    IOrderStore store = OrderStoreFactory.Create(args, fullDataPath);
+    var items = store.List();
+
+    switch (args[0])
+    {
+        case "report-top":
+            Console.WriteLine("=== ТОП-5 замовлень за сумою ===");
+            PrintOrders(ReportService.TopByTotal(items, 5));
+            break;
+
+        case "report-ext":
+            Console.WriteLine("=== Власний метод-розширення TopBy (ТОП-3 за кількістю позицій) ===");
+            PrintOrders(ReportService.TopByLines(items, 3));
+            break;
+
+        case "report-high":
+            decimal threshold = 800.00m;
+            Console.WriteLine($"=== Замовлення із сумою >= {threshold:F2} ===");
+            PrintOrders(ReportService.HighValueOrders(items, threshold));
+            break;
+
+        case "report-groups":
+            Console.WriteLine("=== Розподіл замовлень за статусами (Method Syntax) ===");
+            foreach (var g in ReportService.ByStatus(items))
+                Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
+            break;
+
+        case "report-query":
+            Console.WriteLine("=== Розподіл за статусами (Query Syntax: from ... group ... into) ===");
+            foreach (var g in ReportService.ByStatusQuerySyntax(items))
+                Console.WriteLine($"  Статус: {g.Status,-10} Кількість: {g.Count,3}  Загальна сума: {g.TotalAmount,10:F2}");
+            break;
+
+        case "report-join":
+            var sampleCustomers = new List<CustomerDto>
+            {
+                new("C-001", "Шевченко Тарас"),
+                new("C-002", "Франко Іван"),
+                new("C-003", "Леся Українка"),
+                new("C-004", "Коцюбинський Михайло"),
+                new("C-005", "Багряний Іван"),
+                new("C-999", "Порожній Клієнт Без Замовлень")
+            };
+            Console.WriteLine("=== GroupJoin: Клієнти x Замовлення ===");
+            var joinResult = ReportService.CustomerOrdersReport(sampleCustomers, items);
+            foreach (var c in joinResult)
+                Console.WriteLine($"  Клієнт: {c.CustomerId,-6} {c.CustomerName,-30} Замовлень: {c.OrdersCount,2}  Загалом: {c.TotalAmount,10:F2}");
+            break;
+
+        case "report-bench":
+            Console.WriteLine("=== Замір часу Stopwatch на 100 000 згенерованих записах ===");
+            var bench = ReportService.RunBenchmark(100_000);
+            Console.WriteLine($"  1) З ToList() всередині ланцюжка : {bench.MsWithToList} ms");
+            Console.WriteLine($"  2) БЕЗ ToList() всередині (чистий LINQ) : {bench.MsWithoutToList} ms");
+            Console.WriteLine($"  Різниця: {bench.MsWithToList - bench.MsWithoutToList} ms");
+            break;
+
+        case "report-sum":
+            var t = ReportService.Totals(items);
+            Console.WriteLine("=== Підсумкова статистика замовлень ===");
+            Console.WriteLine($"  Всього замовлень : {t.Count}");
+            Console.WriteLine($"  Загальна сума    : {t.Total:F2}");
+            Console.WriteLine($"  Середній чек     : {t.Average:F2}");
+            Console.WriteLine($"  Максимальний чек : {t.Max:F2}");
+            break;
+
+        case "report-deferred":
+            Console.WriteLine("=== Демонстрація відкладеного виконання LINQ ===");
+            var source = store.List().ToList();
+            var query = source.Where(o => o.Total > 500m);
+
+            Console.WriteLine($"Кількість дорожчих за 500m ДО змін: {query.Count()}");
+
+            Order extra = Order.Create("ORD-TMP-99", "C-999");
+            extra.AddLine("P-999", "Тестова дорога книга", 1000m, 1);
+            source.Add(extra);
+
+            Console.WriteLine($"Кількість дорожчих за 500m ПІСЛЯ додавання у джерело: {query.Count()}");
+
+            var snapshot = query.ToList();
+            source.Clear();
+            Console.WriteLine($"У матеріалізованому snapshot після Clear(): {snapshot.Count}");
+            break;
+
+        default:
+            Console.WriteLine("Доступні команди: report-top | report-ext | report-high | report-groups | report-query | report-join | report-bench | report-sum | report-deferred");
+            break;
+    }
+
+    return 0;
+}
+
+// === КОМАНДИ --crud ===
+if (args.Length > 1 && args[0] == "--crud")
+{
+    IOrderStore store = OrderStoreFactory.Create(args, fullDataPath);
+    var service = new OrderService(store);
+    string action = args[1];
+
+    switch (action)
+    {
+        case "list":
+            Console.WriteLine($"Сховище: {store.GetType().Name}");
+            Console.WriteLine($"Усього замовлень: {store.List().Count}");
+            foreach (Order o in store.List())
+                Console.WriteLine($"  {o}");
+            break;
+
+        case "get":
+            string getId = args.Length > 2 ? args[2] : "";
+            Order? found = store.GetById(getId);
+            Console.WriteLine(found is null
+                ? $"Замовлення з id={getId} не знайдено."
+                : $"Знайдено: {found}");
+            break;
+
+        case "add":
+            string customerId = args.Length > 2 ? args[2] : "C-DEMO";
+            Order created = service.CreateOrder(customerId);
+            Console.WriteLine($"Створено: {created}");
+            break;
+
+        case "update":
+            if (args.Length < 7)
+            {
+                Console.WriteLine("Використання: --crud update <orderId> <productId> <name> <price> <qty> [--file]");
+                break;
+            }
+            string updId = args[2];
+            string prodId = args[3];
+            string prodName = args[4];
+            decimal price = decimal.Parse(args[5], CultureInfo.InvariantCulture);
+            int qty = int.Parse(args[6]);
+            service.AddLine(updId, prodId, prodName, price, qty);
+            Console.WriteLine($"Оновлено: {store.GetById(updId)}");
+            break;
+
+        case "search":
+            if (args.Length < 3)
+            {
+                Console.WriteLine("Використання: --crud search <confirmed|draft|cancelled|customer|min-total|max-total|min-lines> [значення] [--file]");
+                break;
+            }
+            string filterType = args[2].ToLowerInvariant();
+            string? filterValue = args.Length > 3 && !args[3].StartsWith("--") ? args[3] : null;
+
+            Func<Order, bool>? predicate = filterType switch
+            {
+                "confirmed" => o => o.Status == OrderStatus.Confirmed,
+                "draft" => o => o.Status == OrderStatus.Draft,
+                "cancelled" => o => o.Status == OrderStatus.Cancelled,
+                "customer" when filterValue is not null => o => o.CustomerId == filterValue,
+                "min-total" when filterValue is not null && decimal.TryParse(filterValue, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal minT) => o => o.Total >= minT,
+                "max-total" when filterValue is not null && decimal.TryParse(filterValue, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal maxT) => o => o.Total <= maxT,
+                "min-lines" when filterValue is not null && int.TryParse(filterValue, out int minL) => o => o.Lines.Count >= minL,
+                _ => null
+            };
+
+            if (predicate is null)
+            {
+                Console.WriteLine($"Невідомий або некоректний критерій: '{filterType}' зі значенням '{filterValue}'.");
+                break;
+            }
+
+            IReadOnlyList<Order> foundOrders = service.Search(predicate);
+            Console.WriteLine($"Критерій: {filterType}{(filterValue is null ? "" : " " + filterValue)}");
+            Console.WriteLine($"Знайдено: {foundOrders.Count}");
+            foreach (Order o in foundOrders)
+                Console.WriteLine($"  {o}");
+            break;
+
+        case "remove":
+            string remId = args.Length > 2 ? args[2] : "";
+            bool removed = store.Remove(remId);
+            Console.WriteLine(removed
+                ? $"Видалено замовлення {remId}."
+                : $"Замовлення {remId} не знайдено, видаляти нічого.");
+            break;
+
+        default:
+            Console.WriteLine("Дії: list | get <id> | add <customerId> | update <id> <productId> <name> <price> <qty> | remove <id> | search <критерій> [значення]");
+            break;
+    }
+
+    return 0;
+}
+
+// === ІНТЕРАКТИВНИЙ SHELL (ЛР5-ЛР7) ===
+return Shell.Run(args, fullDataPath);
+
+static void PrintOrders(IReadOnlyList<OrderReportLine> lines)
+{
+    foreach (var l in lines)
+        Console.WriteLine($"  {l.OrderId,-10} Клієнт: {l.CustomerId,-6} Рядків: {l.LinesCount,2} Сума: {l.Total,10:F2} [{l.Status}]");
+}
+
+static void TryDo(string title, Action action)
+{
+    try
+    {
+        action();
+        Console.WriteLine($"  {title}: виняток НЕ спрацював — інваріант відсутній!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"  {title}: {ex.GetType().Name} — {ex.Message}");
+    }
+}
+
+[JsonSerializable(typeof(EnvironmentReport))]
+internal partial class ReportJsonContext : JsonSerializerContext
+{
+}

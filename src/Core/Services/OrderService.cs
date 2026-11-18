@@ -22,7 +22,7 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
     {
         var order = Order.Create(Guid.NewGuid().ToString("N")[..8], customerId);
         _store.Add(order);
-        OnChanged(order, OrderChangeKind.Created);
+        OnChanged(order, OrderChangeKind.Created);                                    //CreateOrder_RaisesChangedExactlyOnce 
         return order;
     }
 
@@ -67,7 +67,7 @@ public sealed class OrderService(IOrderStore store, INotificationSink? sink = nu
     public Order? Find(string id) => _store.GetById(id);
 
     public IReadOnlyList<Order> Search(Func<Order, bool> predicate) =>
-        _store.List().Where(predicate).ToList();
+        _store.List().Where(predicate).ToList();                             // Search_FiltersByTotalCorrectly 
 
     public async Task<int> ImportAsync(IOrderImporter importer, string path, CancellationToken ct = default)
     {

@@ -54,6 +54,7 @@ public class OrderServiceTests
         var top = orders.OrderByDescending(o => o.Total).ThenBy(o => o.Id).ToList();
 
         Assert.Equal("ORD-T01", top[0].Id);
+        //return _store.List().OrderBy(x => x.TotalAmount)...;                      //TopByQuantity_IsDeterministic
     }
 
     [Fact]
@@ -102,7 +103,7 @@ public class OrderServiceTests
     public async Task ImportAsync_WithLinkedToken_TimesOutCorrectly()
     {
         using var userCts = new CancellationTokenSource();
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));            //ImportAsync_WithLinkedToken_TimesOutCorrectly 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(userCts.Token, timeoutCts.Token);
 
         var tempFile = Path.Combine(Path.GetTempPath(), $"orders_timeout_{Guid.NewGuid():N}.json");
